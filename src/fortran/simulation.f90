@@ -7,7 +7,7 @@ module simulation
 
 contains 
 
-    subroutine run_simulation(L, n_steps, alpha, beta, history, density_history, total_exits)
+    subroutine run_simulation(L, n_steps, alpha, beta, history, density_history, current_history, total_exits)
         ! Run the 1D open boundary TASEP simulation for n_steps.
         ! 
         ! Inputs:
@@ -18,15 +18,17 @@ contains
         !
         ! Outputs:
         !   history          - lattice state at each timestep 
-        !                      history(t, i) = state of site i at time t
+        !                      history(i, t) = state of site i at time t
         !   density_history  - density at each timestep
+        !   current_history  - number of particles that exited at each timestep
         !   total_exits      - total number of particles that exited during the simulation
 
         integer, intent(in) :: L, n_steps
         real, intent(in) :: alpha, beta
 
-        integer, intent(out) :: history(n_steps, L)
+        integer, intent(out) :: history(L, n_steps)
         real, intent(out) :: density_history(n_steps)
+        integer, intent(out) :: current_history(n_steps)
         integer, intent(out) :: total_exits
 
         integer :: state(L)
@@ -39,8 +41,9 @@ contains
         do step = 1, n_steps
             call tasep_step(state, L, alpha, beta, exit_count)
 
-            history(step, :) = state
+            history(:, step) = state
             density_history(step) = compute_density(state, L)
+            current_history(step) = exit_count
             total_exits = total_exits + exit_count
         end do
 
