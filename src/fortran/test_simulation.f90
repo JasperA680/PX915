@@ -4,7 +4,7 @@ program test_simulation
     implicit none
 
     integer, parameter :: L = 10
-    integer, parameter :: n_steps = 20
+    integer, parameter :: n_steps = 100
     real,    parameter :: alpha = 0.5, beta = 0.5
 
     integer :: history(L, n_steps)
