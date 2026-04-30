@@ -1,9 +1,11 @@
 program test_simulation
     use simulation
+    use tasep_io
     implicit none
 
     integer, parameter :: L = 10
     integer, parameter :: n_steps = 20
+    real,    parameter :: alpha = 0.5, beta = 0.5
 
     integer :: history(L, n_steps)
     real    :: density_history(n_steps)
@@ -12,7 +14,7 @@ program test_simulation
 
     integer :: step
 
-    call run_simulation(L, n_steps, 0.5, 0.5, history, density_history, current_history, total_exits)
+    call run_simulation(L, n_steps, alpha, beta, history, density_history, current_history, total_exits)
 
     do step = 1, n_steps
         print *, "Step:", step
@@ -24,5 +26,9 @@ program test_simulation
 
     print *, "Total exits:", total_exits
     print *, "Mean current:", real(total_exits)/real(n_steps)
+
+    call write_netcdf('data/output/simulation.nc', L, n_steps, alpha, beta, &
+                      history, density_history, current_history)
+    print *, "Output written to data/output/simulation.nc"
 
 end program test_simulation

@@ -1,0 +1,24 @@
+# Build artefacts
+build/
+
+# Fortran compiled module files
+*.mod
+
+# Fortran compiled object files
+*.o
+
+# Executables
+*.ex
+*.exe
+
+# Simulation output
+data/output/*.nc
+data/output/*.txt
+
+# Python
+__pycache__/
+*.py[cod]
+.ipynb_checkpoints/
+
+# macOS
+.DS_Store
