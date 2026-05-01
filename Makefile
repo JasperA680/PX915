@@ -19,15 +19,19 @@ IO_SRC    = $(SRC_DIR)/io.f90
 TEST_SRC  = $(SRC_DIR)/test_simulation.f90
 
 # Network-model sources (new)
-VEHICLE_SRC  = $(SRC_DIR)/vehicle.f90
-NETWORK_SRC  = $(SRC_DIR)/road_network.f90
+VEHICLE_SRC      = $(SRC_DIR)/vehicle.f90
+NETWORK_SRC      = $(SRC_DIR)/road_network.f90
+NETWORK_INIT_SRC = $(SRC_DIR)/network_init.f90
+
+NETWORK_LIB_SRC = $(VEHICLE_SRC) $(NETWORK_SRC) $(NETWORK_INIT_SRC)
 
 # Executables
-TEST_EXE       = $(BUILD_DIR)/test_simulation
-TEST_TYPES_EXE = $(BUILD_DIR)/test_types
+TEST_EXE             = $(BUILD_DIR)/test_simulation
+TEST_TYPES_EXE       = $(BUILD_DIR)/test_types
+TEST_INIT_EXE        = $(BUILD_DIR)/test_init_crossroad
 
 # Default target
-all: test test_types
+all: test test_types test_init_crossroad
 
 # Build existing test program
 test: $(TEST_EXE)
@@ -43,6 +47,13 @@ $(TEST_TYPES_EXE): $(VEHICLE_SRC) $(NETWORK_SRC) tests/test_types.f90
 	mkdir -p $(BUILD_DIR)
 	$(FC) $(FFLAGS) -J$(BUILD_DIR) $^ -o $@
 
+# Phase 2 init test
+test_init_crossroad: $(TEST_INIT_EXE)
+
+$(TEST_INIT_EXE): $(NETWORK_LIB_SRC) tests/test_init_crossroad.f90
+	mkdir -p $(BUILD_DIR)
+	$(FC) $(FFLAGS) -J$(BUILD_DIR) $^ -o $@
+
 
 # Run the existing simulation test
 run: test
@@ -51,6 +62,10 @@ run: test
 # Run the Phase 1 smoke test
 run_test_types: test_types
 	./$(TEST_TYPES_EXE)
+
+# Run the Phase 2 init test
+run_test_init_crossroad: test_init_crossroad
+	./$(TEST_INIT_EXE)
 
 # Clean build files
 clean:
