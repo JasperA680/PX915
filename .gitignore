@@ -18,6 +18,9 @@ data/output/*.txt
 # Generated plots
 plots/
 
+# Claude Progress
+PROGRESS.md
+
 # Python
 .venv/
 __pycache__/

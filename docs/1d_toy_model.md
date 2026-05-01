@@ -27,12 +27,25 @@ lattice of length `L` with open boundaries.
 
 | Phase | Condition | Bulk density ρ | Current J |
 |-------|-----------|----------------|-----------|
-| Low density (LD) | α < β, α < 0.5 | α | α(1−α) |
-| High density (HD) | β < α, β < 0.5 | 1−β | β(1−β) |
+| Low density (LD) | α < β, α < 0.5 | α | α |
+| High density (HD) | β < α, β < 0.5 | 1−β | β |
 | Maximum current (MC) | α ≥ 0.5, β ≥ 0.5 | 0.5 | 0.25 |
 
-In all three phases the current lies on the parabola **J = ρ(1−ρ)**, which
-is the basis of the fundamental diagram.
+### Fundamental diagram
+
+For the **parallel-update** TASEP (equivalently, deterministic cellular
+automaton Rule 184), the current–density relation is the **triangular** curve:
+
+> **J = min(ρ, 1 − ρ)**   (peaks at J = 0.5 when ρ = 0.5)
+
+This is **not** the parabola J = ρ(1−ρ), which applies to the continuous-time
+sequential TASEP. The distinction matters for comparing simulation output
+against theory.
+
+Note: in this implementation J is measured as *exits per step* (a raw count of
+0 or 1 per step), not as flux per lattice site. In the LD phase the exit rate
+equals the entry rate α, so J ≈ α ≈ ρ for small ρ, consistent with the
+triangular branch.
 
 ---
 
@@ -40,25 +53,27 @@ is the basis of the fundamental diagram.
 
 ```
 src/fortran/
-├── tasep.f90              # core physics module
-├── simulation.f90         # time-evolution driver
-├── io.f90                 # NetCDF writer
-├── test_simulation.f90    # end-to-end test program
-└── test_tasep.f90         # unit-level test of tasep_model
+├── tasep.f90                   # core physics module
+├── simulation.f90              # time-evolution driver + steady-state measurer
+├── io.f90                      # NetCDF writers (simulation + fundamental diagram)
+├── test_simulation.f90         # end-to-end simulation program
+├── fundamental_diagram.f90     # α/β sweep program → fundamental_diagram.nc
+└── test_tasep.f90              # unit-level test of tasep_model
 
 src/python/
-├── io.py                  # NetCDF reader
-├── visualisation.py       # space-time, density, current, fundamental diagram
-└── analysis.py            # Python TASEP + parameter sweep
+├── io.py                       # NetCDF reader
+├── visualisation.py            # space-time, density, current, fundamental diagram
+└── analysis.py                 # Python TASEP + parameter sweep
 
 scripts/
-├── run_toy_model.py       # build, run, plot summary figure
-└── run_fundamental_diagram.py  # sweep α and β, plot J vs ρ
+├── run_toy_model.py            # build, run, plot summary figure
+├── run_fundamental_diagram.py  # Python-based α/β sweep, plot J vs ρ
+└── plot_fundamental_diagram.py # plot fundamental_diagram.nc from Fortran sweep
 
-data/output/               # NetCDF output written here
-plots/                     # generated figures (gitignored)
-Makefile                   # builds Fortran binary
-requirements.txt           # numpy, matplotlib, netCDF4
+data/output/                    # NetCDF output written here
+plots/                          # generated figures (gitignored)
+Makefile                        # builds Fortran binaries
+requirements.txt                # numpy, matplotlib, netCDF4
 ```
 
 ---
@@ -82,11 +97,11 @@ update.
 
 ### `simulation.f90` — module `simulation`
 
-Public routine:
+Public routines:
 
 ```fortran
 subroutine run_simulation(L, n_steps, alpha, beta, &
-                         history, density_history, current_history, total_exits)
+                          history, density_history, current_history, total_exits)
 ```
 
 - Loops `tasep_step` for `n_steps` iterations.
@@ -94,10 +109,25 @@ subroutine run_simulation(L, n_steps, alpha, beta, &
 - `density_history(t)` — ρ at step `t`.
 - `current_history(t)` — exits at step `t` (0 or 1).
 - `total_exits` — cumulative count.
+- All output arrays must be `allocatable` and allocated by the caller before the call.
+
+```fortran
+subroutine measure_steady_state(L, n_burnin, n_measure, alpha, beta, &
+                                 mean_density, mean_current)
+```
+
+Designed for parameter sweeps where storing the full history is unnecessary:
+
+- Runs `n_burnin` steps to reach steady state (discards all output).
+- Runs `n_measure` steps accumulating mean density and mean current.
+- Density is measured on the **central L/4 slice**
+  (`sites 3L/8+1 … 5L/8`, matching Python `slice(3*L//8, 5*L//8)`) to avoid
+  boundary-layer bias.
+- `mean_current` is mean exits per step.
 
 ### `io.f90` — module `tasep_io`
 
-Public routine:
+#### `write_netcdf` — simulation output
 
 ```fortran
 subroutine write_netcdf(filename, L, n_steps, alpha, beta, &
@@ -110,23 +140,68 @@ NetCDF schema:
 |------|------|-------|
 | `site` | dimension | length `L` |
 | `time` | dimension | length `n_steps` |
-| `history` | variable, `int(site, time)` | lattice occupancy |
-| `density` | variable, `float(time)` | mean density per step |
-| `current` | variable, `int(time)` | exits per step |
-| `L`, `n_steps`, `alpha`, `beta`, `model` | global attributes | for round-trip |
+| `history` | `int(site, time)` | lattice occupancy |
+| `density` | `float(time)` | mean density per step |
+| `current` | `int(time)` | exits per step |
+| `L`, `n_steps`, `alpha`, `beta`, `model` | global attributes | |
 
-### `test_simulation.f90` — entry program
+#### `write_fundamental_diagram_netcdf` — sweep output
 
-Compile-time parameters (currently `L=10`, `n_steps=100`, `α=β=0.5`). Calls
-`run_simulation`, prints per-step state to stdout, and writes
-`data/output/simulation.nc`. Edit the `parameter` lines to change the run.
+```fortran
+subroutine write_fundamental_diagram_netcdf(filename, L, n_points, n_burnin, n_measure, &
+                                             fixed_beta, fixed_alpha, &
+                                             alpha_param, alpha_rho, alpha_J, &
+                                             beta_param,  beta_rho,  beta_J)
+```
+
+NetCDF schema:
+
+| Item | Kind | Notes |
+|------|------|-------|
+| `n_points` | dimension | points per sweep branch |
+| `alpha_param` | `float(n_points)` | α values swept (β held at `fixed_beta`) |
+| `alpha_rho` | `float(n_points)` | mean bulk density (α sweep) |
+| `alpha_J` | `float(n_points)` | mean current (α sweep) |
+| `beta_param` | `float(n_points)` | β values swept (α held at `fixed_alpha`) |
+| `beta_rho` | `float(n_points)` | mean bulk density (β sweep) |
+| `beta_J` | `float(n_points)` | mean current (β sweep) |
+| `L`, `n_points`, `n_burnin`, `n_measure`, `fixed_beta`, `fixed_alpha` | global attributes | |
+
+### `test_simulation.f90` — simulation driver program
+
+Accepts command-line arguments (all optional, with defaults):
+
+```bash
+./build/test_simulation [L] [n_steps] [alpha] [beta]
+# defaults: L=10  n_steps=100  alpha=0.5  beta=0.5
+```
+
+Allocates history arrays at runtime, calls `run_simulation`, prints per-step
+state to stdout, and writes `data/output/simulation.nc`.
+
+### `fundamental_diagram.f90` — sweep program
+
+Accepts command-line arguments (all optional):
+
+```bash
+./build/fundamental_diagram [L] [n_points] [n_measure]
+# defaults: L=100  n_points=30  n_measure=3000
+# n_burnin is set automatically to 2*L^2
+```
+
+- Alpha sweep: varies α ∈ [0.02, 0.98] with β = 0.5 fixed → LD branch and MC peak.
+- Beta sweep: varies β ∈ [0.02, 0.98] with α = 0.5 fixed → HD branch and MC peak.
+- Writes `data/output/fundamental_diagram.nc`.
 
 ### Build
 
 ```bash
-make run        # build + run
-make            # build only
-make clean      # remove build/
+make              # build both binaries (test_simulation + fundamental_diagram)
+make run          # build + run test_simulation with defaults
+make run-fd       # build + run fundamental_diagram sweep with defaults
+
+# Override simulation parameters (any subset):
+make run L=50 N_STEPS=500 ALPHA=0.3 BETA=0.7
 ```
 
 `gfortran -Wall -O2` with NetCDF Fortran bindings via `nf-config`.
@@ -155,20 +230,20 @@ code sees `(L, n_steps)` as expected.
 | `plot_spacetime(data, ax, title)` | 2D occupancy grid: site (y) vs time (x), black = occupied. |
 | `plot_density(data, ax, title)` | ρ vs time line plot with time-mean overlay. |
 | `plot_current(data, ax, title)` | Exits-per-step bar chart with mean overlay. |
-| `plot_fundamental_diagram(rho, J, ax, title)` | Scatter of (ρ, J) against the theoretical J = ρ(1−ρ) parabola. |
+| `plot_fundamental_diagram(rho, J, ax, title)` | Scatter of (ρ, J) against the triangular theory curve J = min(ρ, 1−ρ). |
 | `plot_summary(data, save_path)` | 3-panel composite: space-time on top, density and current below. |
 
 ### `src/python/analysis.py`
 
 A standalone NumPy implementation of TASEP, separate from the Fortran binary,
-used for parameter sweeps where recompiling each time would be impractical.
-The update rules match the Fortran exactly.
+used for parameter sweeps from Python. The update rules match the Fortran
+exactly.
 
 | Function | Purpose |
 |----------|---------|
 | `tasep_step(state, alpha, beta, rng)` | One parallel-update step (NumPy-vectorised bulk hops). |
 | `run_tasep(L, n_steps, alpha, beta, burnin, seed, bulk_slice)` | Run for `burnin + n_steps` steps, return density and current arrays for the post-burnin period. `bulk_slice` lets you measure density only in a chosen region. |
-| `fundamental_diagram(L, n_steps, burnin, n_points, seed)` | Sweeps α with β=1, then β with α=1, returns `(rho_vals, J_vals)`. Defaults: `burnin = 2*L²` (auto), `bulk_slice = slice(L//4, 3*L//4)` to avoid boundary-layer bias. |
+| `fundamental_diagram(L, n_steps, burnin, n_points, seed)` | Sweeps α with β=0.5, then β with α=0.5; returns `(rho_vals, J_vals)`. Defaults: `burnin = 2*L²`, `bulk_slice = slice(3*L//8, 5*L//8)`. |
 
 ---
 
@@ -187,47 +262,63 @@ python scripts/run_toy_model.py --save       # also write plots/summary.png
 
 ### `scripts/run_fundamental_diagram.py`
 
-Runs the Python TASEP sweep and produces J vs ρ figure.
+Runs the **Python** TASEP sweep (via `analysis.fundamental_diagram`) and
+produces J vs ρ figure.
 
 ```bash
 python scripts/run_fundamental_diagram.py
 python scripts/run_fundamental_diagram.py --L 100 --points 40 --save
 ```
 
-Flags: `--L` (lattice size, default 50), `--points` (per-branch sweep
-resolution, default 30), `--save` (write `plots/fundamental.png`).
+Flags: `--L` (lattice size, default 50), `--points` (per-branch resolution,
+default 30), `--save` (write `plots/fundamental.png`).
+
+### `scripts/plot_fundamental_diagram.py`
+
+Reads `data/output/fundamental_diagram.nc` produced by the **Fortran** sweep
+(`make run-fd`) and plots J vs ρ using `visualisation.plot_fundamental_diagram`.
+
+```bash
+python scripts/plot_fundamental_diagram.py
+python scripts/plot_fundamental_diagram.py --save   # write plots/fundamental_fortran.png
+python scripts/plot_fundamental_diagram.py --input path/to/other.nc
+```
 
 ---
 
 ## 6. Pipeline overview
 
 ```
-Fortran binary  ──►  data/output/simulation.nc  ──►  Python loader  ──►  plots
-   (rules)            (history, ρ, J + attrs)         (transpose)         (figures)
-```
+# Single simulation run
+Fortran binary  ──►  data/output/simulation.nc  ──►  Python loader  ──►  plots/summary.png
+   (tasep rules)       (history, ρ, J + attrs)        (io.py)            (run_toy_model.py)
 
-For the fundamental diagram the Fortran path is bypassed — the sweep runs
-entirely in Python so α and β can be varied without recompiling.
+# Fundamental diagram — Fortran sweep (faster)
+make run-fd  ──►  data/output/fundamental_diagram.nc  ──►  plot_fundamental_diagram.py
+
+# Fundamental diagram — Python sweep
+run_fundamental_diagram.py  ──►  plots/fundamental.png
+```
 
 ---
 
 ## 7. Conventions and gotchas
 
 - **Array order:** Fortran is column-major, NumPy is row-major. The transpose
-  in `io.py` is what makes everything line up — don't remove it.
+  in `io.py` is what makes `history` line up — don't remove it.
 - **`history(i, t)`** in Fortran corresponds to `history[i, t]` in Python
-  (i.e. shape `(L, n_steps)`).
-- **Compile-time parameters:** `L`, `n_steps`, `α`, `β` are baked into the
-  Fortran binary. Changing them requires editing `test_simulation.f90` and
-  rebuilding. This will be replaced with runtime input when the road network
-  lands.
+  (shape `(L, n_steps)`).
+- **Theory curve:** the parallel-update TASEP follows J = min(ρ, 1−ρ)
+  (triangular), not the parabola J = ρ(1−ρ). The two agree only in the
+  LD and HD phases for small α/β.
 - **Burn-in:** equilibration time scales as ~L² near the max-current phase
-  boundary. For statistics in the steady state, discard the first ~L² steps.
-  `fundamental_diagram` does this automatically via `burnin = 2*L²`.
+  boundary. Discard ≥ L² steps before recording statistics.
+  `measure_steady_state` and `fundamental_diagram` both default to
+  `n_burnin = 2*L²`.
 - **Boundary layers:** the spatial average of density differs from the bulk
-  density by an O(1/L) correction. For comparing against J = ρ(1−ρ), measure
-  ρ from the middle of the lattice (the default `bulk_slice` in
-  `fundamental_diagram`).
+  by an O(1/L) correction. Both `measure_steady_state` and the Python
+  `fundamental_diagram` measure density over the central L/4 slice
+  (`sites 3L/8+1 … 5L/8`) to avoid this bias.
 
 ---
 
@@ -242,9 +333,15 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 
-# Run
+# Single simulation run
 make run
 python scripts/run_toy_model.py --save
+
+# Fundamental diagram (Fortran sweep, then plot)
+make run-fd
+python scripts/plot_fundamental_diagram.py --save
+
+# Fundamental diagram (Python sweep)
 python scripts/run_fundamental_diagram.py --save
 ```
 
