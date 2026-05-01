@@ -15,6 +15,9 @@ build/
 data/output/*.nc
 data/output/*.txt
 
+# Generated plots
+plots/
+
 # Python
 .venv/
 __pycache__/

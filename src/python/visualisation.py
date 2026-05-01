@@ -77,6 +77,27 @@ def plot_current(data, ax=None, title=None):
     return fig, ax
 
 
+def plot_fundamental_diagram(rho_vals, J_vals, ax=None, title=None):
+    """Flow J vs density rho with the theoretical J = rho(1-rho) parabola."""
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(6, 5))
+    else:
+        fig = ax.figure
+
+    rho_theory = np.linspace(0, 1, 300)
+    ax.plot(rho_theory, rho_theory * (1 - rho_theory), 'k--',
+            linewidth=1.5, label='J = ρ(1−ρ)  theory')
+    ax.scatter(rho_vals, J_vals, s=18, color='steelblue',
+               alpha=0.8, zorder=3, label='simulation')
+    ax.set_xlabel('Density ρ')
+    ax.set_ylabel('Current J')
+    ax.set_xlim(0, 1)
+    ax.set_ylim(0, 0.30)
+    ax.set_title(title or 'Fundamental diagram')
+    ax.legend(fontsize=9)
+    return fig, ax
+
+
 def plot_summary(data, save_path=None):
     """Three-panel summary figure: space-time, density, current."""
     fig = plt.figure(figsize=(12, 8))
