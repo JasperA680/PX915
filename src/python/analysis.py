@@ -67,16 +67,16 @@ def fundamental_diagram(L=50, n_steps=3000, burnin=None, n_points=30, seed=None)
         burnin = 2 * L * L
 
     param_vals = np.linspace(0.02, 0.98, n_points)
-    bulk = slice(L // 4, 3 * L // 4)
+    bulk = slice(3 * L // 8, 5 * L // 8)
     rho_list, J_list = [], []
 
     for alpha in param_vals:
-        density, current = run_tasep(L, n_steps, alpha, beta=1.0, burnin=burnin, seed=seed, bulk_slice=bulk)
+        density, current = run_tasep(L, n_steps, alpha, beta=0.5, burnin=burnin, seed=seed, bulk_slice=bulk)
         rho_list.append(density.mean())
         J_list.append(current.mean())
 
     for beta in param_vals:
-        density, current = run_tasep(L, n_steps, alpha=1.0, beta=beta, burnin=burnin, seed=seed, bulk_slice=bulk)
+        density, current = run_tasep(L, n_steps, alpha=0.5, beta=beta, burnin=burnin, seed=seed, bulk_slice=bulk)
         rho_list.append(density.mean())
         J_list.append(current.mean())
 
