@@ -19,9 +19,15 @@ IO_SRC    = $(SRC_DIR)/io.f90
 TEST_SRC  = $(SRC_DIR)/test_simulation.f90
 FD_SRC    = $(SRC_DIR)/fundamental_diagram.f90
 
+# PDE source files
+PDE_FLUX_SRC = $(SRC_DIR)/pde_flux.f90
+PDE_MOD_SRC  = $(SRC_DIR)/pde_module.f90
+PDE_DRV_SRC  = $(SRC_DIR)/pde_driver.f90
+
 # Executables
 TEST_EXE = $(BUILD_DIR)/test_simulation
 FUND_EXE = $(BUILD_DIR)/fundamental_diagram
+PDE_EXE  = $(BUILD_DIR)/pde_solver
 
 # Default simulation parameters (override: make run L=50 ALPHA=0.3 BETA=0.7)
 L       ?= 10
@@ -29,8 +35,20 @@ N_STEPS ?= 100
 ALPHA   ?= 0.5
 BETA    ?= 0.5
 
-# Default target: build both executables
-all: $(TEST_EXE) $(FUND_EXE)
+# Default PDE parameters (override: make run-pde PDE_M=400 PDE_IC=riemann)
+PDE_M      ?= 200
+PDE_STEPS  ?= 500
+PDE_VMAX   ?= 1.0
+PDE_RHOMAX ?= 1.0
+PDE_LEFT   ?= 0.1
+PDE_RIGHT  ?= 0.9
+PDE_IC     ?= riemann
+PDE_FLUX   ?= lf
+PDE_BC     ?= open
+PDE_OUT    ?= data/output/pde_simulation.nc
+
+# Default target: build all executables
+all: $(TEST_EXE) $(FUND_EXE) $(PDE_EXE)
 
 # Build simulation driver (needs NetCDF)
 $(TEST_EXE): $(MODEL_SRC) $(SIM_SRC) $(IO_SRC) $(TEST_SRC)
@@ -42,6 +60,13 @@ $(FUND_EXE): $(MODEL_SRC) $(SIM_SRC) $(IO_SRC) $(FD_SRC)
 	mkdir -p $(BUILD_DIR)
 	$(FC) $(FFLAGS) $^ -o $@ $(NC_FLIBS)
 
+# Build PDE solver (pde_flux must come before pde_module due to USE dependency)
+$(PDE_EXE): $(PDE_FLUX_SRC) $(PDE_MOD_SRC) $(PDE_DRV_SRC)
+	mkdir -p $(BUILD_DIR)
+	$(FC) $(FFLAGS) $^ -o $@ $(NC_FLIBS)
+
+pde: $(PDE_EXE)
+
 # Run simulation (params can be overridden: make run L=50 N_STEPS=500 ALPHA=0.3 BETA=0.7)
 run: $(TEST_EXE)
 	./$(TEST_EXE) $(L) $(N_STEPS) $(ALPHA) $(BETA)
@@ -49,6 +74,10 @@ run: $(TEST_EXE)
 # Run fundamental diagram sweep
 run-fd: $(FUND_EXE)
 	./$(FUND_EXE)
+
+# Run PDE solver (params can be overridden: make run-pde PDE_M=400 PDE_IC=riemann)
+run-pde: $(PDE_EXE)
+	./$(PDE_EXE) $(PDE_M) $(PDE_STEPS) $(PDE_VMAX) $(PDE_RHOMAX) $(PDE_LEFT) $(PDE_RIGHT) $(PDE_IC) $(PDE_FLUX) $(PDE_BC) $(PDE_OUT)
 
 # Clean build files
 clean:
