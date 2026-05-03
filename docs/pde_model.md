@@ -55,19 +55,24 @@ For the Riemann problem (piecewise-constant initial data):
 ```
 src/fortran/
 ├── pde_flux.f90          # Greenshields flux functions + numerical flux schemes
-└── pde_module.f90        # solver types, initialise/step/finalise, NetCDF output
-
-src/fortran/              # (driver program)
+├── pde_module.f90        # solver types, initialise/step/finalise, NetCDF output
 └── pde_driver.f90        # command-line entry point; runs simulation + writes .nc
 
 src/python/
-└── pde_runner.py         # Python flux mirrors, run_pde(), load_pde_netcdf()
+├── pde_runner.py         # Python flux mirrors, run_pde(), load_pde_netcdf()
+└── visualisation.py      # (shared) — PDE plots added alongside existing TASEP plots
+
+scripts/
+└── run_pde_model.py      # build → run → load → plot summary figure
 
 tests/
 └── test_pde.py           # Phase 1 flux unit tests + Phase 4 solver tests (partial)
 
 data/output/
 └── pde_simulation.nc     # default output path
+
+plots/
+└── pde_summary.png       # written by run_pde_model.py --save
 ```
 
 ---
@@ -328,9 +333,92 @@ would give shape `(M, n_steps+1)` — a cell-indexed array — which is wrong
 for time-series analysis. See §5 Gotchas for the contrast with the TASEP
 `io.py` behaviour.
 
+### `src/python/visualisation.py` — PDE plotting functions
+
+Four functions added to the shared visualisation module (alongside the
+existing TASEP functions). All accept the dict returned by `load_pde_netcdf`.
+
+#### `plot_pde_spacetime(data, ax=None, title=None)`
+
+`viridis` heatmap of ρ(x, t) with x on the horizontal axis and time
+increasing upward. This is the primary visual diagnostic — shocks appear
+as straight diagonal lines whose slope gives the wave speed, and rarefaction
+fans appear as triangular colour gradients.
+
+#### `plot_pde_snapshots(data, n_snapshots=6, ax=None, title=None)`
+
+Line plots of ρ(x) at `n_snapshots` evenly-spaced times, coloured from dark
+to light using the `plasma` colourmap. Useful for reading off shock position
+at each time and checking the profile shape against the analytical solution.
+
+#### `plot_pde_flow(data, ax=None, title=None)`
+
+Time series of q(ρ_M) — the flow at the rightmost physical cell — with a
+dashed reference line at q_max = v_max·ρ_max/4. Under open BCs this tracks
+the outflow rate; it should remain constant while the shock is away from the
+boundary and then change when the shock exits.
+
+#### `plot_pde_summary(data, save_path=None)`
+
+Three-panel composite figure: space-time heatmap (top, full width), density
+snapshots (bottom-left), and boundary flow (bottom-right). The suptitle
+includes M, n_steps, IC, flux, and BC type from the NetCDF attributes.
+Pass a path to `save_path` to write a PNG at 150 dpi.
+
 ---
 
-## 5. Tests — `tests/test_pde.py`
+## 5. Entry-point script — `scripts/run_pde_model.py`
+
+Wraps the full pipeline: builds the Fortran binary → runs the solver →
+loads the NetCDF → displays the summary figure. Mirrors `run_toy_model.py`
+in style.
+
+```bash
+python scripts/run_pde_model.py                        # build, run, plot
+python scripts/run_pde_model.py --no-run               # replot existing .nc
+python scripts/run_pde_model.py --save                 # write plots/pde_summary.png
+```
+
+**Flags:**
+
+| Flag | Default | Notes |
+|------|---------|-------|
+| `--M` | 200 | spatial cells |
+| `--steps` | 500 | time steps |
+| `--ic` | `riemann` | `constant` / `riemann` / `gaussian` / `sine` |
+| `--flux` | `lf` | `lf` (Lax–Friedrichs) / `godunov` |
+| `--bc` | `open` | `open` / `periodic` |
+| `--rho-left` | 0.1 | left BC and left Riemann state |
+| `--rho-right` | 0.9 | right BC and right Riemann state |
+| `--output` | `data/output/pde_simulation.nc` | NetCDF path |
+| `--no-run` | — | skip build and solver; load existing file |
+| `--save` | — | save figure to `plots/pde_summary.png` |
+
+**Example commands for different wave structures:**
+
+```bash
+# Stationary shock (default — symmetric states, s=0)
+python scripts/run_pde_model.py
+
+# Rightward-moving shock  s = (q(0.7)−q(0.1))/0.6 = +0.2
+python scripts/run_pde_model.py --rho-left 0.1 --rho-right 0.7
+
+# Leftward-moving shock   s = (q(0.8)−q(0.3))/0.5 = −0.1
+python scripts/run_pde_model.py --rho-left 0.3 --rho-right 0.8
+
+# Sonic rarefaction (dense left, sparse right, passes through ρ_c)
+python scripts/run_pde_model.py --rho-left 0.8 --rho-right 0.1
+
+# Sharper shocks with Godunov flux
+python scripts/run_pde_model.py --rho-left 0.1 --rho-right 0.7 --flux godunov --save
+
+# Gaussian bump on periodic domain
+python scripts/run_pde_model.py --ic gaussian --bc periodic --M 400 --steps 1000
+```
+
+---
+
+## 6. Tests — `tests/test_pde.py`
 
 ### Phase 1 — flux unit tests (always run, no binary required)
 
@@ -370,40 +458,44 @@ If double precision is needed, change `NF90_FLOAT` to `NF90_DOUBLE` in
 
 ---
 
-## 6. Pipeline overview
+## 7. Pipeline overview
 
 ```
-# Typical PDE run
-make run-pde                         # build + run Fortran solver → data/output/pde_simulation.nc
+# Full pipeline via script
+python scripts/run_pde_model.py --ic riemann --flux godunov --save
+
+# Or step by step
+make run-pde                  # Fortran solver → data/output/pde_simulation.nc
 python -c "
 import sys; sys.path.insert(0,'src/python')
 from pde_runner import load_pde_netcdf
-d = load_pde_netcdf('data/output/pde_simulation.nc')
-print(d['density'].shape, d['attrs']['ic_type'])
-"
-
-# Or drive from Python
-from src.python.pde_runner import run_pde, load_pde_netcdf
-run_pde(dict(M=400, n_steps=1000, ic_type='riemann', flux_type='godunov'))
+from visualisation import plot_pde_summary
+import matplotlib.pyplot as plt
 data = load_pde_netcdf('data/output/pde_simulation.nc')
-# data['density'] is (1001, 400) — (time, x)
+plot_pde_summary(data, save_path='plots/pde_summary.png')
+plt.show()
+"
 ```
 
 ```
-pde_flux.f90       elemental flux functions (no I/O)
-      │
-pde_module.f90     solver types, step logic, NetCDF writer
-      │
-pde_driver.f90     CLI → runs loop → density_history → write_pde_netcdf
-      │
-pde_simulation.nc  density(time, x), flow(time), global attrs
-      │
-pde_runner.py      load_pde_netcdf → dict with (n_steps+1, M) density array
+pde_flux.f90         elemental flux functions (no I/O)
+       │
+pde_module.f90       solver types, step logic, NetCDF writer
+       │
+pde_driver.f90       CLI → runs loop → density_history → write_pde_netcdf
+       │
+pde_simulation.nc    density(time, x), flow(time), global attrs
+       │
+pde_runner.py        load_pde_netcdf → dict with (n_steps+1, M) density array
+       │
+visualisation.py     plot_pde_summary → 3-panel figure
+       │
+run_pde_model.py     end-to-end CLI: build → run → load → show/save
 ```
 
 ---
 
-## 7. Conventions and gotchas
+## 8. Conventions and gotchas
 
 - **NetCDF dimension ordering.** The Fortran variable `density_history(M, n_steps+1)`
   is defined with `[x_dimid, time_dimid]` (Fortran: x fastest). The C-convention
@@ -440,7 +532,7 @@ pde_runner.py      load_pde_netcdf → dict with (n_steps+1, M) density array
 
 ---
 
-## 8. Setup
+## 9. Setup
 
 ```bash
 # Build the PDE solver
