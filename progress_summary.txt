@@ -1,0 +1,250 @@
+# PX915 Road Network Junction Model — Progress Summary & Design Reference
+
+> **Purpose of this document**: context for future development sessions. It records not just what was built but *why* each design decision was made, where the subtle bugs were, and what invariants must be preserved when extending the code.
+
+---
+
+## Project Context
+
+University of Warwick group project (Tristan McCarthy, Jasper Allen, Stephan Gambert, Lucas Belz-Koeling). Deadline: 28 May 2026.
+
+The core model is a **1D TASEP** (Totally Asymmetric Simple Exclusion Process) — a cellular automaton where particles hop right with probability 1, enter at site 1 with probability α, and exit at site L with probability β. This models single-lane traffic flow. The network extension adds junctions so multiple roads can interact.
+
+**Existing code is untouched**: `tasep.f90`, `simulation.f90`, `io.f90` are the original single-lattice model and must remain unchanged. All new code is in separate modules compiled alongside.
+
+---
+
+## Architecture Overview
+
+```
+vehicle_mod          — integer cell codes (V_EMPTY, V_STRAIGHT, V_LEFT, V_RIGHT)
+road_network_mod     — data types: lane_t, road_t, junction_t, road_network_t
+network_init_mod     — hard-coded crossroad builder (init_crossroad)
+junction_mod         — evaluate_junctions and all right-of-way logic
+network_simulation_mod — network_step driver + lane_internal_step
+```
+
+These five modules depend on each other strictly in the order listed above. No circular dependencies.
+
+---
+
+## ⚠️ Critical Design Invariants (read before touching any module)
+
+### 1. Clockwise Array Rule
+Junctions store `connected_road_ids(:)` in **strict clockwise order**. In the crossroad: 1=N, 2=E, 3=S, 4=W. All directional logic — destinations, yield-to-right, opposite leg — is **pure modulo arithmetic on array indices**. There are no string labels or compass-direction conditionals anywhere in the model code (only in the human-readable test printout).
+
+**Why**: makes the code generalise to any N-leg junction without rewrites. The modulo formulas are:
+
+| Turn | Destination index `dst_k` |
+|------|--------------------------|
+| STRAIGHT | `mod(k + N/2 − 1, N) + 1` |
+| LEFT (UK easy turn) | `mod(k, N) + 1` |
+| RIGHT (cuts across oncoming) | `mod(k + N − 2, N) + 1` |
+| Right-of-i (R1 target) | `mod(i + N − 2, N) + 1` |
+| Opposite-of-i (R2/R3, N=4 only) | `mod(i + 1, N) + 1` |
+
+**UK driving convention**: LEFT is the easy swing (clockwise next leg); RIGHT cuts across oncoming traffic. This is the opposite of the US convention. Getting this wrong breaks the yield rules.
+
+### 2. Lane Orientation
+- `lane(1)` carries flow **end₁ → end₂** (vehicle index increases toward end₂)
+- `lane(2)` carries flow **end₂ → end₁** (vehicle index increases toward end₁)
+
+For a junction at road end `e` (1 or 2):
+- **Inbound lane** (toward junction) = `3 - e` — always has the holding cell at site **L**
+- **Outbound lane** (away from junction) = `e` — always receives arriving vehicles at site **1**
+
+In the crossroad all roads connect at end 1, so inbound = lane 2, outbound = lane 1. **Do not hardcode this assumption** — always call `inbound_lane_idx(end_at(k))` and `outbound_lane_idx(end_at(k))`.
+
+### 3. Parallel-Update Ordering
+Every timestep runs in this exact order:
+```
+snapshot_network      ← copies cells → old for ALL roads/lanes
+evaluate_junctions    ← reads old, writes cells
+lane_internal_step    ← reads old, writes cells
+```
+**Both** junction and lane steps read from `old` (the frozen snapshot). This is the fundamental parallel-update invariant: no vehicle can react to another vehicle's move within the same timestep.
+
+Consequence: a vehicle placed at site 1 of an outbound lane by the junction this step will NOT be moved again by `lane_internal_step` this step (because `old(1)` is still V_EMPTY). It sits at site 1 until the next step.
+
+### 4. Full-Step Yield Semantics
+If vehicle A must yield to vehicle B, A waits the **entire timestep** — even if B also moves this step. The yield check is:
+```fortran
+yields_live = any(yields_to(i, :) .and. (holding /= V_EMPTY))
+```
+It checks `holding` (the old snapshot), not whether B was approved. **This is intentional.** It prevents the approve_pass from cascading (where A sees B approved and tries to move into B's vacated spot in the same step).
+
+---
+
+## Phase 1 — Data Structures
+
+### `vehicle_mod` (`src/fortran/vehicle.f90`)
+
+Single integer per cell encodes both occupancy and intent:
+- `V_EMPTY = 0`, `V_STRAIGHT = 1`, `V_LEFT = 2`, `V_RIGHT = 3`
+
+`is_occupied(cell)` = `cell /= V_EMPTY`. `sample_indicator(p_left, p_right)` assigns intent stochastically at lane entry: draw uniform r; if r < p_left → LEFT, else if r < p_left+p_right → RIGHT, else STRAIGHT.
+
+### `road_network_mod` (`src/fortran/road_network.f90`)
+
+Key fields of `lane_t`:
+- `cells(:)` — current state
+- `old(:)` — parallel-update snapshot (always read from here inside a step)
+- `alpha`, `beta`, `p_left`, `p_right` — boundary parameters
+- `open_in`, `open_out` — flags controlling which ends are open boundaries vs junction-controlled
+
+`junction_t` stores `connected_road_ids(:)` and `end_at(:)` in clockwise order. `road_network_t` owns allocatable arrays of both.
+
+**Test**: `build/test_types` — PASS
+
+---
+
+## Phase 2 — Crossroad Initialisation
+
+### `network_init_mod` (`src/fortran/network_init.f90`)
+
+`init_crossroad` builds the 4-road crossroad:
+- 4 roads, each with 2 lanes of length L
+- 1 junction connecting all 4 roads at their end₁
+- Inbound lane (lane 2): `open_in=T`, alpha, p_left, p_right
+- Outbound lane (lane 1): `open_out=T`, beta
+
+`free_network` deallocates all allocatable arrays. **Always call this at the end of a test** — gfortran doesn't complain but Valgrind will.
+
+**Test**: `build/test_init_crossroad` — PASS
+
+---
+
+## Phase 3 — Junction Evaluation
+
+### `junction_mod` (`src/fortran/junction.f90`)
+
+This is the most complex module. The right-of-way logic proceeds in seven steps inside `evaluate_one_junction`:
+
+**Step 4 — Yield matrix (`build_yield_matrix`)**
+
+Three rules applied in sequence, building `yields_to(i,j)` = "leg i must yield to leg j":
+
+- **R1 (yield-to-right)**: `yields_to(i, right_of_i) = T` if `paths_conflict(N, holding(i), holding(right_of_i), delta=3)`. Conflict is TRUE unless both are V_LEFT.
+- **R2 (right-turn yields oncoming)**: if leg i is V_RIGHT, it yields to its opposite leg if that leg is V_STRAIGHT or V_LEFT.
+- **R3 (opposite-leg delta=2 scan, N=4 only)**: for each pair (i, opp) not already resolved by R1/R2 — if (S, L): left yields to straight; if (L, S): left yields to straight; if (R, R): mutual yields → will become deadlock.
+
+**`paths_conflict(N, ti, tj, delta)`** — pure function:
+- delta=1 or delta=3: conflict unless both V_LEFT
+- delta=2 (opposite): no conflict if (S,S) or (L,L); conflict otherwise
+
+**Step 5 — Approval pass (`approve_pass`)**
+
+A vehicle is approved if: has vehicle, destination is phys_clear, and `yields_live = any(yields_to(i,:) .and. holding/=V_EMPTY)` is FALSE. The `holding /= V_EMPTY` check (not `.not. approved`) is essential for full-step yield semantics.
+
+**Step 6 — Deadlock breaker (`resolve_deadlocks`)**
+
+A vehicle is "in deadlock" if:
+1. It yields to at least one non-approved, non-deadlocked vehicle, AND
+2. **It yields to NO already-approved vehicle** ← this second condition was added to fix the mass conservation bug (see Phase 5).
+
+```fortran
+in_deadlock = any(yields_to(k,:) .and. (holding /= V_EMPTY) &
+                  .and. .not. approved .and. .not. deadlocked) &
+              .and. .not. any(yields_to(k,:) .and. (holding /= V_EMPTY) &
+                             .and. approved)
+```
+
+One winner is picked stochastically from the deadlock set. All others are marked `deadlocked` for this timestep — the `deadlocked` flag prevents the cascade where multiple iterations keep picking more winners from a ring.
+
+**Test suite** (`build/test_junction`) — all 9 tests PASS.
+
+### Bugs fixed in Phase 3 (before integration)
+
+| Bug | Symptom | Fix |
+|-----|---------|-----|
+| Missing R3 scan | Mutual right-turn deadlock never triggered; both vehicles approved | Added the delta=2 opposite-leg scan to `build_yield_matrix` |
+| `approve_pass` cascade | After one vehicle approved, others whose yield-target was now "approved" also got approved | Changed yield check from `.not. approved(j)` to `holding(j) /= V_EMPTY` |
+| No `deadlocked` flag | 4-way standoff resolver picked multiple winners in successive loop iterations | Added `deadlocked(:)` array; marks all non-winners, prevents re-selection |
+
+---
+
+## Phase 4 — Network Simulation Driver
+
+### `network_simulation_mod` (`src/fortran/network_simulation.f90`)
+
+**`lane_internal_step`** processes each road × lane in order:
+1. **Exit at site L** (if `open_out`): reads `old(L)`, clears `cells(L)` with probability beta.
+2. **Bulk hops** (L-1 down to 1): reads `old(i)` and `old(i+1)`; hops use old state only — strictly parallel, no cascading.
+3. **Inflow at site 1** (if `open_in`): reads `old(1)`; if empty, injects new vehicle with probability alpha, intent from `sample_indicator`.
+
+**Important**: for inbound lanes (`open_in=T, open_out=F`), the exit check is skipped — the junction handles site L. For outbound lanes (`open_out=T, open_in=F`), the inflow check is skipped — the junction places vehicles at site 1.
+
+---
+
+## Phase 5 — Integration Soak Test & Mass Conservation Bug
+
+### `test_network_run.f90` (`tests/test_network_run.f90`)
+
+Runs α=0.4, β=0.5, p_left=p_right=0.25, L=20, 500-step burnin, 5000-step production run. Per-step mass check: `n_after == n_before + entries - exits`. Symmetry check: max/min per-road exit current within 20%.
+
+### Debugging process
+
+**Step 1**: original test was wrong — it captured `n_initial=0` before burnin. Rewritten to capture `n_before` after burnin and check per step.
+
+**Step 2**: per-step check failed at step 173 (n=64, entries=1, exits=1, expected=64, actual=63). Added `network_step_debug` to count after each sub-phase:
+```
+before snapshot  =  64
+after junctions  =  63   ← vehicle lost here
+after lane_step  =  63
+```
+
+**Step 3**: injected an overwrite-detector into the commit loop. Confirmed two approved vehicles writing to the same destination cell.
+
+**Step 4**: traced the exact scenario causing the bug:
+- Leg 3 (V_LEFT) approved in first pass (no yield targets).
+- Leg 1 (V_RIGHT) yielded to leg 3 via R2 AND to leg 4 via R1.
+- Deadlock resolver saw leg 1's yield to leg 3 as "resolved" (leg 3 is approved, `.not. approved(3)` = false), leaving only leg 4 blocking leg 1.
+- Leg 4 was blocked by approved leg 3, so not counted as "in deadlock."
+- Resolver approved leg 1 — overriding its outstanding yield to approved leg 3.
+- Both leg 1 and leg 3 committed to road 4, lane 1, site 1. One vehicle destroyed.
+
+**Fix**: added the second condition to `in_deadlock` (see Phase 3 section above). A vehicle that yields to any already-approved vehicle is not a deadlock member — it simply waits this step.
+
+### Final output
+
+```
+PASS: mass conservation OK (all 5000 steps)
+
+ Road  Entries  Exits  J_in   J_out
+    1    1353    1335  0.2706  0.2670
+    2    1364    1351  0.2728  0.2702
+    3    1321    1388  0.2642  0.2776
+    4    1372    1335  0.2744  0.2670
+Exit current range:  0.2670 - 0.2776
+
+PASS: per-road currents are non-zero and symmetric
+test_network_run: ALL OK
+```
+
+All four executables compile with **zero warnings** in the new modules (pre-existing warnings are in the original `tasep.f90` and are not our concern).
+
+---
+
+## Build Commands
+
+```bash
+make                        # build all five executables
+make clean                  # remove build/ and *.mod files
+
+./build/test_types          # Phase 1 smoke test
+./build/test_init_crossroad # Phase 2 topology check
+./build/test_junction       # Phase 3 unit tests (9 cases)
+./build/test_network_run    # Phase 5 integration soak test
+
+make run                    # run original TASEP test (must still pass)
+```
+
+---
+
+## What Remains
+
+- [ ] **NetCDF output** for network model — write per-step density/flow to `.nc` using the existing `tasep_io` pattern
+- [ ] **2D multi-lane model** — Week 4 milestone per SDP
+- [ ] **PDE continuum model** — Week 4/5 milestone per SDP
+- [ ] **Python front end** — analysis scripts, visualisation, and NetCDF reader stubs to be filled in
+- [ ] **Sensitivity analysis** — sweep α, β, p_left, p_right; measure steady-state current and phase boundaries

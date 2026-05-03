@@ -23,15 +23,20 @@ VEHICLE_SRC      = $(SRC_DIR)/vehicle.f90
 NETWORK_SRC      = $(SRC_DIR)/road_network.f90
 NETWORK_INIT_SRC = $(SRC_DIR)/network_init.f90
 
-NETWORK_LIB_SRC = $(VEHICLE_SRC) $(NETWORK_SRC) $(NETWORK_INIT_SRC)
+JUNCTION_SRC     = $(SRC_DIR)/junction.f90
+NET_SIM_SRC      = $(SRC_DIR)/network_simulation.f90
+
+NETWORK_LIB_SRC = $(VEHICLE_SRC) $(NETWORK_SRC) $(NETWORK_INIT_SRC) $(JUNCTION_SRC) $(NET_SIM_SRC)
 
 # Executables
 TEST_EXE             = $(BUILD_DIR)/test_simulation
 TEST_TYPES_EXE       = $(BUILD_DIR)/test_types
 TEST_INIT_EXE        = $(BUILD_DIR)/test_init_crossroad
+TEST_JUNCTION_EXE    = $(BUILD_DIR)/test_junction
+TEST_NETWORK_RUN_EXE = $(BUILD_DIR)/test_network_run
 
 # Default target
-all: test test_types test_init_crossroad
+all: test test_types test_init_crossroad test_junction test_network_run
 
 # Build existing test program
 test: $(TEST_EXE)
@@ -63,9 +68,30 @@ run: test
 run_test_types: test_types
 	./$(TEST_TYPES_EXE)
 
+# Phase 3 junction test
+test_junction: $(TEST_JUNCTION_EXE)
+
+$(TEST_JUNCTION_EXE): $(NETWORK_LIB_SRC) tests/test_junction.f90
+	mkdir -p $(BUILD_DIR)
+	$(FC) $(FFLAGS) -J$(BUILD_DIR) $^ -o $@
+
 # Run the Phase 2 init test
 run_test_init_crossroad: test_init_crossroad
 	./$(TEST_INIT_EXE)
+
+# Run the Phase 3 junction tests
+run_test_junction: test_junction
+	./$(TEST_JUNCTION_EXE)
+
+# Integration soak test
+test_network_run: $(TEST_NETWORK_RUN_EXE)
+
+$(TEST_NETWORK_RUN_EXE): $(NETWORK_LIB_SRC) tests/test_network_run.f90
+	mkdir -p $(BUILD_DIR)
+	$(FC) $(FFLAGS) -J$(BUILD_DIR) $^ -o $@
+
+run_test_network_run: test_network_run
+	./$(TEST_NETWORK_RUN_EXE)
 
 # Clean build files
 clean:
