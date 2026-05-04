@@ -6,6 +6,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parents[1] / "src" / "python"))
+sys.path.insert(0, str(Path(__file__).parent))
 from pde_runner import v_of_rho, q_of_rho, dq_drho, rho_critical
 
 
@@ -82,6 +83,7 @@ def test_q_symmetric_about_critical():
 
 try:
     from pde_runner import run_pde, load_pde_netcdf
+    from exact_riemann import exact_riemann_lwr
     BINARY = Path(__file__).parents[1] / "build" / "pde_solver"
     SOLVER_AVAILABLE = BINARY.exists()
 except ImportError:
@@ -126,3 +128,119 @@ def test_mass_conservation_periodic(tmp_path):
     # catch open-boundary mass leakage while tolerating float32 rounding.
     assert np.allclose(mass, mass[0], atol=1e-4), \
         f"Mass drift: {np.abs(mass - mass[0]).max():.2e}"
+
+
+@SOLVER_SKIP
+def test_shock_speed(tmp_path):
+    """Shock position matches Rankine-Hugoniot speed to within 4 cell widths.
+
+    rho_L=0.3 (free-flow), rho_R=0.8 (congested) → shock crossing rho_c,
+    travelling left at s = (q(0.8)-q(0.3))/(0.8-0.3) = -0.1.
+    Tolerance follows PDE.md: one cell width per 100 steps.
+    """
+    rho_L, rho_R = 0.3, 0.8
+    M, n_steps = 200, 400
+    out = tmp_path / "shock.nc"
+    run_pde(
+        dict(M=M, n_steps=n_steps, ic_type="riemann",
+             rho_left_bc=rho_L, rho_right_bc=rho_R,
+             flux_type="godunov", bc_type="open"),
+        output_path=out,
+    )
+    data = load_pde_netcdf(out)
+    attrs    = data["attrs"]
+    dx       = float(attrs["dx"])
+    v_max    = float(attrs.get("v_max", 1.0))
+    rho_max  = float(attrs.get("rho_max", 1.0))
+    x        = data["x"]
+    t_final  = float(data["time"][-1])
+    rho_num  = data["density"][-1]
+
+    # Locate shock as the cell interface with the largest density jump
+    grad = np.abs(np.diff(rho_num))
+    idx  = np.argmax(grad)
+    x_shock_num = 0.5 * (x[idx] + x[idx + 1])
+
+    # Exact shock position via Rankine-Hugoniot
+    s = (q_of_rho(rho_R, v_max, rho_max) - q_of_rho(rho_L, v_max, rho_max)) / (rho_R - rho_L)
+    x_shock_exact = 0.5 + s * t_final   # IC discontinuity placed at x = L/2 = 0.5
+
+    tol = 4 * dx  # PDE.md: one cell width per 100 steps over 400 steps
+    assert abs(x_shock_num - x_shock_exact) < tol, (
+        f"Shock at {x_shock_num:.4f}, expected {x_shock_exact:.4f}, "
+        f"|error|={abs(x_shock_num - x_shock_exact):.4f} > tol={tol:.4f}"
+    )
+
+
+@SOLVER_SKIP
+def test_rarefaction_l1_error(tmp_path):
+    """Rarefaction fan has L1 error O(dx) against the exact self-similar solution.
+
+    rho_L=0.8 > rho_R=0.2 produces a sonic rarefaction spanning the critical
+    density.  Godunov is exact on smooth rarefactions; error is O(dx) at the
+    two kink points where the fan meets the constant states.
+    """
+    rho_L, rho_R = 0.8, 0.2
+    M, n_steps = 200, 100
+    out = tmp_path / "rarefaction.nc"
+    run_pde(
+        dict(M=M, n_steps=n_steps, ic_type="riemann",
+             rho_left_bc=rho_L, rho_right_bc=rho_R,
+             flux_type="godunov", bc_type="open"),
+        output_path=out,
+    )
+    data = load_pde_netcdf(out)
+    attrs   = data["attrs"]
+    dx      = float(attrs["dx"])
+    v_max   = float(attrs.get("v_max", 1.0))
+    rho_max = float(attrs.get("rho_max", 1.0))
+    x       = data["x"]
+    t_final = float(data["time"][-1])
+    rho_num = data["density"][-1]
+
+    rho_exact = exact_riemann_lwr(x, t_final, rho_L, rho_R, v_max, rho_max)
+    l1_error  = np.sum(np.abs(rho_num - rho_exact)) * dx
+
+    assert l1_error < 10 * dx, (
+        f"Rarefaction L1 error {l1_error:.5f} exceeds 10*dx={10*dx:.5f}"
+    )
+
+
+@SOLVER_SKIP
+def test_convergence_first_order(tmp_path):
+    """L1 error against the exact Riemann solution halves as dx halves.
+
+    Uses n_steps = M for each grid so that t_final = CFL * domain / v_max ≈ 0.9
+    is the same across all refinements, making the comparison well-defined.
+    """
+    rho_L, rho_R = 0.3, 0.8   # shock problem (same as test_shock_speed)
+    errors = {}
+    for M in (50, 100, 200):
+        out = tmp_path / f"conv_{M}.nc"
+        run_pde(
+            dict(M=M, n_steps=M, ic_type="riemann",
+                 rho_left_bc=rho_L, rho_right_bc=rho_R,
+                 flux_type="godunov", bc_type="open"),
+            output_path=out,
+        )
+        data    = load_pde_netcdf(out)
+        attrs   = data["attrs"]
+        dx      = float(attrs["dx"])
+        v_max   = float(attrs.get("v_max", 1.0))
+        rho_max = float(attrs.get("rho_max", 1.0))
+        x       = data["x"]
+        t_final = float(data["time"][-1])
+        rho_num = data["density"][-1]
+        rho_ex  = exact_riemann_lwr(x, t_final, rho_L, rho_R, v_max, rho_max)
+        errors[M] = np.sum(np.abs(rho_num - rho_ex)) * dx
+
+    ratio_50_100  = errors[50]  / errors[100]
+    ratio_100_200 = errors[100] / errors[200]
+    assert ratio_50_100 >= 1.5, (
+        f"Convergence rate (M 50→100): error ratio={ratio_50_100:.2f} < 1.5 "
+        f"(errors: {errors[50]:.4f}, {errors[100]:.4f})"
+    )
+    assert ratio_100_200 >= 1.5, (
+        f"Convergence rate (M 100→200): error ratio={ratio_100_200:.2f} < 1.5 "
+        f"(errors: {errors[100]:.4f}, {errors[200]:.4f})"
+    )
