@@ -11,44 +11,171 @@ interface, and the test suite. It tracks **Phases 1 and 2** of `PDE.md`.
 The model is the **Lighthill–Whitham–Richards** traffic flow equation — a scalar
 hyperbolic conservation law:
 
-```
+$$
 ∂ρ/∂t + ∂q(ρ)/∂x = 0
-```
+$$
 
 where ρ(x, t) is vehicle density and q(ρ) is the traffic flow (vehicles per
 unit time). The **Greenshields fundamental diagram** is used as the closure:
 
-```
-v(ρ)  = v_max · (1 − ρ/ρ_max)          (speed decreases linearly with density)
-q(ρ)  = ρ · v(ρ) = v_max · ρ · (1 − ρ/ρ_max)    (concave parabola)
-dq/dρ = v_max · (1 − 2ρ/ρ_max)         (characteristic speed; zero at ρ_c)
-```
+$$
+v(\rho) = v_{\max}\left(1 - \frac{\rho}{\rho_{\max}}\right)
+$$
+
+Speed decreases linearly with density.
+
+$$
+q(\rho) = \rho v(\rho)
+= v_{\max}\rho\left(1 - \frac{\rho}{\rho_{\max}}\right)
+$$
+
+This gives a concave parabolic flow density relation.
+
+$$
+\frac{dq}{d\rho}= v_{\max}\left(1 - \frac{2\rho}{\rho_{\max}}\right)
+$$
+
+This is the characteristic speed, which becomes zero at 
+
+$$
+\rho_c = \frac{\rho_{\max}}{2}
+$$
 
 ### Critical density
 
 The flow q is concave and achieves its maximum at:
 
-> **ρ_c = ρ_max / 2**   (critical density, argmax of q)
+> $ρ_c = ρ_{\max} / 2$ 
 
 This divides the domain into two phases:
 
 | Phase | Condition | dq/dρ | Behaviour |
 |-------|-----------|-------|-----------|
-| Free flow (subcritical) | ρ < ρ_c | > 0 | density waves travel forward |
-| Congested (supercritical) | ρ > ρ_c | < 0 | density waves travel backward |
+| Free flow (subcritical) | $ρ < ρ_c$ | > 0 | density waves travel forward |
+| Congested (supercritical) | $ρ > ρ_c$ | < 0 | density waves travel backward |
 
 ### Wave structures
 
-For the Riemann problem (piecewise-constant initial data):
+The finite-volume solver evolves the density by computing fluxes across cell interfaces. At each interface, the numerical method locally sees a jump between a left density and a right density. This local jump problem is called a **Riemann problem**.
 
-| ρ_L vs ρ_R | Wave type | Propagation |
+#### The Riemann problem
+
+A Riemann problem is an initial-value problem where the density is piecewise constant:
+
+$$
+\rho(x,0) =
+\begin{cases}
+\rho_L, & x < 0, \\
+\rho_R, & x > 0.
+\end{cases}
+$$
+
+Here, $\rho_L$ is the density immediately to the left of an interface and \(\rho_R\) is the density immediately to the right. Even if the full simulation contains a smooth or complicated density profile, the finite-volume method approximates the solution as piecewise constant inside each cell. Therefore, every cell boundary can be treated as a small Riemann problem.
+
+The solution of the Riemann problem determines how information travels away from the interface. For the LWR traffic equation,
+
+$$
+\frac{\partial \rho}{\partial t} + \frac{\partial q(\rho)}{\partial x} = 0,
+$$
+
+the relevant wave speed is the characteristic speed
+
+$$
+\frac{dq}{d\rho}.
+$$
+
+For the Greenshields flux,
+
+$$
+q(\rho) = v_{\max}\rho\left(1-\frac{\rho}{\rho_{\max}}\right),
+$$
+
+the characteristic speed is
+
+$$
+\frac{dq}{d\rho}=v_{\max}\left(1-\frac{2\rho}{\rho_{\max}}\right).
+$$
+
+This speed is positive in the free-flow regime, zero at the critical density, and negative in the congested regime. As a result, density disturbances can move either downstream or upstream depending on the local density.
+
+#### Shock waves
+
+A **shock** forms when characteristics move into each other and the density profile steepens into a discontinuity. For the Greenshields flux, which is concave, this occurs when
+
+$$
+\rho_L < \rho_R.
+$$
+
+This corresponds to a lower-density region feeding into a higher-density region. In traffic terms, vehicles are moving from a freer region into a more congested region, so the transition compresses into a sharp front.
+
+The shock travels at the Rankine--Hugoniot speed
+
+$$
+s =\frac{q(\rho_R)-q(\rho_L)}{\rho_R-\rho_L}.
+$$
+
+This expression comes from conservation: the speed of the discontinuity is determined by the difference in flow across the jump divided by the difference in density. Depending on the values of $\rho_L$ and $\rho_R$, the shock may move downstream or upstream.
+
+A particularly important case is when the shock connects a free-flow state to a congested state:
+
+$$
+\rho_L < \rho_c < \rho_R.
+$$
+
+Here the interface crosses the critical density. In the Godunov method, the flux is limited by the smaller of the two possible flows,
+
+$$
+F_G = \min(q(\rho_L), q(\rho_R)).
+$$
+
+This reflects the idea that the amount of traffic passing through the interface is constrained by the bottleneck between upstream demand and downstream supply.
+
+#### Rarefaction waves
+
+A **rarefaction** forms when characteristics spread apart. For the Greenshields flux, this occurs when
+
+$$
+\rho_L > \rho_R.
+$$
+
+This corresponds to a higher-density region opening into a lower-density region. In traffic terms, congestion is releasing into a freer part of the road, so the transition spreads out rather than forming a sharp jump.
+
+Instead of a single discontinuity, the solution becomes a fan of characteristics connecting $\rho_L$ to $\rho_R$. Each density within the fan travels at its own characteristic speed
+
+$$
+\frac{dq}{d\rho}.
+$$
+
+
+The most important rarefaction case is when the left state is congested and the right state is free-flowing:
+
+$$
+\rho_R < \rho_c < \rho_L.
+$$
+
+This rarefaction crosses the critical density, where
+
+$$
+\frac{dq}{d\rho}=0.
+$$
+
+Because one characteristic has zero speed, this is sometimes called a **sonic rarefaction**. In this case, the Godunov flux takes the maximum possible value of the fundamental diagram:
+
+$$
+F_G = q(\rho_c)
+= \frac{v_{\max}\rho_{\max}}{4}.
+$$
+
+Physically, this means the interface is operating at road capacity.
+
+#### Summary of wave types
+
+| $\rho_L$ vs $\rho_R$ | Wave type | Propagation |
 |------------|-----------|-------------|
-| ρ_L < ρ_R | **Shock** | speed s = (q(ρ_R) − q(ρ_L)) / (ρ_R − ρ_L) (Rankine–Hugoniot) |
-| ρ_L > ρ_R | **Rarefaction** | fan of characteristics connecting ρ_L to ρ_R |
-| ρ_L < ρ_c < ρ_R | Shock through critical | Godunov flux = min(q(ρ_L), q(ρ_R)) |
-| ρ_R < ρ_c < ρ_L | Sonic rarefaction | Godunov flux = q(ρ_c) = v_max·ρ_max/4 |
-
----
+| $\rho_L < \rho_R$ | **Shock** | speed $s = \dfrac{q(\rho_R)-q(\rho_L)}{\rho_R-\rho_L}$ using the Rankine--Hugoniot condition |
+| $\rho_L > \rho_R$ | **Rarefaction** | fan of characteristics connecting $\rho_L$ to $\rho_R$ |
+| $\rho_L < \rho_c < \rho_R$ | Shock through critical | Godunov flux $= \min(q(\rho_L), q(\rho_R))$ |
+| $\rho_R < \rho_c < \rho_L$ | Sonic rarefaction | Godunov flux $= q(\rho_c) = \dfrac{v_{\max}\rho_{\max}}{4}$ |
 
 ## 2. Repository layout (PDE files)
 
@@ -85,20 +212,20 @@ All flux routines are **elemental** (work on scalars and arrays transparently).
 
 | Routine | Signature | Purpose |
 |---------|-----------|---------|
-| `v_of_rho` | `(rho, v_max, rho_max)` | Greenshields speed v(ρ) |
-| `q_of_rho` | `(rho, v_max, rho_max)` | Flow q(ρ) = ρ·v(ρ) |
-| `dq_drho`  | `(rho, v_max, rho_max)` | Characteristic speed dq/dρ |
-| `rho_critical` | `(rho_max)` | ρ_c = ρ_max/2 |
+| `v_of_rho` | `(rho, v_max, rho_max)` | Greenshields speed $v(\rho)$ |
+| `q_of_rho` | `(rho, v_max, rho_max)` | Flow $q(ρ) = \rho v(ρ)$ |
+| `dq_drho`  | `(rho, v_max, rho_max)` | Characteristic speed $dq/d\rho$|
+| `rho_critical` | `(rho_max)` | $\rho_c = \rho_\max/2$ |
 
 Two non-elemental **numerical flux** functions:
 
 #### `lax_friedrichs_flux(rho_L, rho_R, v_max, rho_max, dx, dt)`
 
-```
-F_LF = [q(ρ_L) + q(ρ_R)] / 2  −  (Δx / 2Δt) · (ρ_R − ρ_L)
-```
+$$
+F_{LF} = \frac{q(ρ_L) + q(ρ_R)}{2}  −  \frac{\Delta x}{2 \Delta t} (\rho_R − \rho_L)
+$$
 
-Stable for CFL ≤ 1 but adds numerical diffusion proportional to Δx/(2Δt).
+Stable for CFL ≤ 1 but adds numerical diffusion proportional to $\Delta x/(2\Delta t)$.
 Used as the default scheme in Phases 1–2 because it is simple and robust.
 
 #### `godunov_flux(rho_L, rho_R, v_max, rho_max)`
@@ -106,17 +233,33 @@ Used as the default scheme in Phases 1–2 because it is simple and robust.
 Exact Godunov flux for a concave flux. Closed-form case table
 (LeVeque, *Finite Volume Methods for Hyperbolic Problems*, §12.1):
 
-```
-If ρ_L ≤ ρ_R  (shock):
-  both subcritical  (ρ_R ≤ ρ_c): F = q(ρ_L)
-  both supercritical (ρ_L ≥ ρ_c): F = q(ρ_R)
-  mixed (ρ_L < ρ_c < ρ_R):       F = min(q(ρ_L), q(ρ_R))
-
-If ρ_L > ρ_R  (rarefaction):
-  both subcritical  (ρ_L ≤ ρ_c): F = q(ρ_L)
-  both supercritical (ρ_R ≥ ρ_c): F = q(ρ_R)
-  sonic (ρ_R < ρ_c < ρ_L):       F = q(ρ_c)
-```
+$$
+F_G(\rho_L,\rho_R)=\begin{cases}
+q(\rho_L),
+& \rho_L \leq \rho_R \leq \rho_c
+\quad \text{shock, both subcritical},
+\\[4pt]
+q(\rho_R),
+& \rho_c \leq \rho_L \leq \rho_R
+\quad \text{shock, both supercritical},
+\\[4pt]
+\min\!\left(q(\rho_L),q(\rho_R)\right),
+& \rho_L < \rho_c < \rho_R
+\quad \text{shock through critical},
+\\[8pt]
+q(\rho_L),
+& \rho_R < \rho_L \leq \rho_c
+\quad \text{rarefaction, both subcritical},
+\\[4pt]
+q(\rho_R),
+& \rho_c \leq \rho_R < \rho_L
+\quad \text{rarefaction, both supercritical},
+\\[4pt]
+q(\rho_c),
+& \rho_R < \rho_c < \rho_L
+\quad \text{sonic rarefaction}.
+\end{cases}
+$$
 
 Does not take Δt as an argument — this is a deliberate design choice: the
 Godunov flux is independent of the time step, which makes it easier to use
@@ -158,9 +301,9 @@ Allocates all arrays and fills `state%density` from the chosen IC:
 | `ic_type` | Initial condition |
 |-----------|------------------|
 | `"constant"` | Uniform density = `rho_left_bc` |
-| `"riemann"` | `rho_left_bc` for x < L/2, `rho_right_bc` for x ≥ L/2 |
-| `"gaussian"` | Base 0.2·ρ_max + Gaussian bump of amplitude 0.6·ρ_max, σ = 5% of domain |
-| `"sine"` | Mean 0.5·ρ_max + sinusoidal perturbation of amplitude 0.15·ρ_max |
+| `"riemann"` | `rho_left_bc` for $x < L/2$, `rho_right_bc` for $x ≥ L/2$ |
+| `"gaussian"` | Base $0.2\rho_\max$ + Gaussian bump of amplitude $0.6\rho_\max$, $\sigma = 0.05L$ |
+| `"sine"` | Mean $0.5\rho_\max$ + sinusoidal perturbation of amplitude $0.15\rho_\max$ |
 
 For the `"riemann"` IC, `rho_left_bc` and `rho_right_bc` double as the
 left/right initial densities. This intentionally links the IC to the open
@@ -170,11 +313,11 @@ boundary values so that the inflow/outflow match the initial state.
 
 One conservative finite-volume update:
 
-```
-ρ_i^{n+1} = ρ_i^n − (Δt/Δx) · [F_{i+1/2} − F_{i-1/2}]
-```
+$$
+\rho_i^{n+1} = \rho_i^n − \frac{\Delta t}{\Delta x} [F_{i+1/2} − F_{i-1/2}]
+$$
 
-where `F_{i+1/2}` is either `lax_friedrichs_flux` or `godunov_flux` depending
+where $F_{i+1/2}$ is either `lax_friedrichs_flux` or `godunov_flux` depending
 on `params%flux_type`.
 
 **Boundary conditions** are applied via ghost cells before the flux loop:
