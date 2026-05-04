@@ -12,10 +12,10 @@ The model is the **Lighthill–Whitham–Richards** traffic flow equation — a 
 hyperbolic conservation law:
 
 $$
-∂ρ/∂t + ∂q(ρ)/∂x = 0
+\frac{\partial \rho}{\partial t} + \frac{\partial q(\rho)}{\partial x} = 0
 $$
 
-where ρ(x, t) is vehicle density and q(ρ) is the traffic flow (vehicles per
+where $\rho(x, t)$ is vehicle density and $q(\rho)$ is the traffic flow (vehicles per
 unit time). The **Greenshields fundamental diagram** is used as the closure:
 
 $$
@@ -43,7 +43,7 @@ $$
 
 ### Critical density
 
-The flow q is concave and achieves its maximum at:
+The flow $q$ is concave and achieves its maximum at:
 
 > $ρ_c = ρ_{\max} / 2$ 
 
@@ -193,7 +193,8 @@ scripts/
 └── run_pde_model.py      # build → run → load → plot summary figure
 
 tests/
-└── test_pde.py           # Phase 1 flux unit tests + Phase 4 solver tests (partial)
+├── test_pde.py           # Phase 1 flux unit tests + Phase 4 solver tests (complete)
+└── exact_riemann.py      # exact LWR Riemann solution helper (consumed by Phase 4 tests)
 
 data/output/
 └── pde_simulation.nc     # default output path
@@ -581,11 +582,15 @@ python scripts/run_pde_model.py --ic gaussian --bc periodic --M 400 --steps 1000
 ### Phase 4 — solver integration tests (require `build/pde_solver`)
 
 Tests are automatically skipped if the binary is absent. Run `make pde` first.
+The exact Riemann solution used by tests (c)–(e) lives in `tests/exact_riemann.py`.
 
 | Test | What it checks | Tolerance |
 |------|----------------|-----------|
 | `test_constant_solution_preserved` | Uniform IC stays uniform for 1000 steps with periodic BCs | 1 × 10⁻¹⁰ |
 | `test_mass_conservation_periodic` | ∑ ρ_i · Δx constant for Gaussian IC with periodic BCs over 1000 steps | 1 × 10⁻⁴ (float32 limit) |
+| `test_shock_speed` | Shock position (ρ_L=0.3, ρ_R=0.8) matches Rankine–Hugoniot speed s=−0.1 | 4 cell widths (1 per 100 steps) |
+| `test_rarefaction_l1_error` | Sonic rarefaction (ρ_L=0.8, ρ_R=0.2) L1 error vs exact fan | < 10 · Δx |
+| `test_convergence_first_order` | L1 error ratio ≥ 1.5 as M doubles (50→100→200); n_steps=M keeps t_final≈0.9 | — |
 
 The mass conservation tolerance is 1×10⁻⁴ rather than the 1×10⁻¹⁰ quoted in
 `PDE.md`. This is because the Fortran solver and NetCDF output both use
@@ -594,6 +599,17 @@ exactly mass-conservative in exact arithmetic (the boundary flux telescopes),
 so any deviation comes from float32 rounding in the stored NetCDF values.
 If double precision is needed, change `NF90_FLOAT` to `NF90_DOUBLE` in
 `write_pde_netcdf` and use `real(8)` throughout the Fortran.
+
+#### `tests/exact_riemann.py` — `exact_riemann_lwr(x, t, rho_L, rho_R, ...)`
+
+Returns the exact density field for an LWR Riemann problem with Greenshields
+flux, evaluated at positions `x` and time `t`:
+
+- **ρ_L < ρ_R** (shock): discontinuity at `x0 + s·t` where `s = (q(ρ_R)−q(ρ_L))/(ρ_R−ρ_L)`.
+- **ρ_L > ρ_R** (rarefaction): centred fan; in the fan `ρ = (ρ_max/2)·(1 − (x−x0)/(v_max·t))`.
+
+The function uses the self-similar variable ξ = (x−x0)/t, so it correctly
+handles sonic rarefactions (fan crossing ρ_c) without any special-casing.
 
 ```bash
 .venv/bin/python -m pytest tests/test_pde.py -v
