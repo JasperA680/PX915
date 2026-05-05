@@ -51,6 +51,10 @@ module road_network_mod
         integer, allocatable :: out_road(:)    ! road id for outbound leg k  (length n_out)
         integer, allocatable :: out_lane(:)    ! lane index within road      (length n_out)
         type(leg_route_t), allocatable :: in_routes(:)  ! length n_in
+        ! Perimeter port positions (0-indexed, CW) for chord-crossing conflict predicate.
+        ! Only allocated for asymmetric junctions (n_in /= 4 or n_out /= 4).
+        integer, allocatable :: in_perim(:)    ! length n_in
+        integer, allocatable :: out_perim(:)   ! length n_out
     end type junction_t
 
     type, public :: road_network_t

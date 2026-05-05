@@ -103,8 +103,12 @@ contains
             phys_clear(k) = (net%roads(dst_road(k))%lane(dst_lane(k))%old(1) == V_EMPTY)
         end do
 
-        ! 4. Build yield matrix (rules R1, R2, R3).
-        call build_yield_matrix_v2(net%junctions(jid), holding, dst_idx, yields_to)
+        ! 4. Build yield matrix.
+        if (N == 4 .and. net%junctions(jid)%n_out == 4) then
+            call build_yield_matrix_v2(net%junctions(jid), holding, dst_idx, yields_to)
+        else
+            call build_yield_matrix_asym(net%junctions(jid), holding, dst_idx, yields_to)
+        end if
 
         ! 5. First approval pass.
         call approve_pass(holding, phys_clear, yields_to, approved)
@@ -218,6 +222,61 @@ contains
             end do
         end if
     end subroutine build_yield_matrix_v2
+
+    !-----------------------------------------------------------------
+    ! Yield matrix for asymmetric junctions (n_in /= 4 or n_out /= 4).
+    ! Only R1 applies: yield to the CW-prev neighbour when paths cross
+    ! (chord-crossing predicate) or when both target the same outbound.
+    ! R2 and R3 are skipped.
+    !-----------------------------------------------------------------
+    subroutine build_yield_matrix_asym(jn, holding, dst_idx, yields_to)
+        type(junction_t), intent(in)  :: jn
+        integer,          intent(in)  :: holding(:), dst_idx(:)
+        logical,          intent(out) :: yields_to(:,:)
+        integer :: N, i, right_of_i, n_perim
+
+        N       = jn%n_in
+        n_perim = jn%n_in + jn%n_out
+        yields_to = .false.
+
+        do i = 1, N
+            if (holding(i) == V_EMPTY) cycle
+            right_of_i = mod(i + N - 2, N) + 1
+            if (holding(right_of_i) == V_EMPTY) cycle
+            ! R1: yield to right if chords cross or same destination.
+            if (chords_cross(jn%in_perim(i),          jn%out_perim(dst_idx(i)), &
+                             jn%in_perim(right_of_i), jn%out_perim(dst_idx(right_of_i)), &
+                             n_perim) &
+                .or. dst_idx(i) == dst_idx(right_of_i)) then
+                yields_to(i, right_of_i) = .true.
+            end if
+        end do
+    end subroutine build_yield_matrix_asym
+
+    !-----------------------------------------------------------------
+    ! Chord-crossing predicate on a cyclic perimeter of n_perim ports
+    ! (0-indexed).  Two chords (pa1->pa2) and (pb1->pb2) cross iff
+    ! exactly one of {pb1, pb2} lies in the open CW arc from pa1 to pa2.
+    !-----------------------------------------------------------------
+    pure function chords_cross(pa1, pa2, pb1, pb2, n_perim) result(c)
+        integer, intent(in) :: pa1, pa2, pb1, pb2, n_perim
+        logical :: c
+        c = in_arc(pa1, pa2, pb1, n_perim) .neqv. in_arc(pa1, pa2, pb2, n_perim)
+    end function chords_cross
+
+    pure function in_arc(a, b, p, n) result(res)
+        ! Is port p strictly inside the open CW arc from a to b?
+        integer, intent(in) :: a, b, p, n
+        logical :: res
+        integer :: ab, ap
+        if (a == b) then
+            res = .false.
+        else
+            ab = modulo(b - a, n)
+            ap = modulo(p - a, n)
+            res = (ap > 0) .and. (ap < ab)
+        end if
+    end function in_arc
 
     !-----------------------------------------------------------------
     ! Approval pass.

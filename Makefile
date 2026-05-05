@@ -36,7 +36,7 @@ TEST_JUNCTION_EXE    = $(BUILD_DIR)/test_junction
 TEST_NETWORK_RUN_EXE = $(BUILD_DIR)/test_network_run
 
 # Default target
-all: test test_types test_init_crossroad test_junction test_network_run
+all: test test_types test_init_crossroad test_junction test_network_run test_t_junction
 
 # Build existing test program
 test: $(TEST_EXE)
@@ -92,6 +92,18 @@ $(TEST_NETWORK_RUN_EXE): $(NETWORK_LIB_SRC) tests/test_network_run.f90
 
 run_test_network_run: test_network_run
 	./$(TEST_NETWORK_RUN_EXE)
+
+# Phase 4 T-junction test
+TEST_T_JUNCTION_EXE = $(BUILD_DIR)/test_t_junction
+
+test_t_junction: $(TEST_T_JUNCTION_EXE)
+
+$(TEST_T_JUNCTION_EXE): $(NETWORK_LIB_SRC) tests/test_t_junction.f90
+	mkdir -p $(BUILD_DIR)
+	$(FC) $(FFLAGS) -J$(BUILD_DIR) $^ -o $@
+
+run_test_t_junction: test_t_junction
+	./$(TEST_T_JUNCTION_EXE)
 
 # Clean build files
 clean:
