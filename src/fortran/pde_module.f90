@@ -6,15 +6,18 @@ module pde_solver
   public :: pde_params_t, pde_state_t
   public :: pde_initialise, pde_step, pde_finalise
   public :: compute_dt, write_pde_netcdf
+  real, parameter :: PI = 3.14159265358979
 
   type :: pde_params_t
     real    :: dx, dt, domain_length, v_max, rho_max
     real    :: rho_left_bc, rho_right_bc, cfl_number
     integer :: M, n_steps, C_checkpoint
     character(len=16) :: ic_type   ! "constant", "riemann", "gaussian", "sine"
-    character(len=16) :: bc_type   ! "open", "periodic"
+    character(len=16) :: bc_type   ! "open", "periodic", "sponge"
     character(len=16) :: flux_type ! "lf" (Lax-Friedrichs) or "godunov"
     logical :: use_adaptive_dt
+    integer :: n_sponge          ! number of sponge cells at right boundary (default 10)
+    real    :: sponge_damping    ! damping rate coefficient (default 5*v_max/domain_length)
   end type pde_params_t
 
   type :: pde_state_t
@@ -72,7 +75,7 @@ contains
         x = (real(i) - 0.5) * params%dx
         state%density(i) = params%rho_max * 0.5 &
           + 0.15 * params%rho_max &
-            * sin(2.0 * 3.14159265358979 * x / params%domain_length)
+            * sin(2.0 * PI * x / params%domain_length)
       end do
 
     case default
@@ -87,6 +90,7 @@ contains
     type(pde_state_t),  intent(inout) :: state
     type(pde_params_t), intent(in)    :: params
     integer :: i, M
+    real    :: j_real, sigma_j
 
     M = params%M
 
@@ -123,6 +127,31 @@ contains
       state%density(i) = state%density(i) &
         - (params%dt / params%dx) * (state%flux(i) - state%flux(i-1))
     end do
+
+    ! Sponge layer — applied after the conservative update so the interior
+    ! remains fully conservative.
+    !
+    ! The buffer occupies the rightmost n_sponge physical cells:
+    !   cell M-n_sponge+1  (interior edge, j=1) — weakest damping
+    !   cell M             (right wall,    j=n_sponge) — strongest damping
+    !
+    ! Cosine taper: sigma(j) = 0.5 * (1 - cos(pi * j / n_sponge))
+    !   -> sigma(1)        ~ 0   (nearly no damping at interior edge)
+    !   -> sigma(n_sponge) = 1   (full damping at wall)
+    !
+    ! Density nudge towards zero:
+    !   rho_i <- rho_i * (1 - sigma_j * sponge_damping * dt)
+    ! clamped to [0, rho_max] to prevent overshoot.
+    if (trim(params%bc_type) == 'sponge') then
+      do i = 1, params%n_sponge
+        j_real  = real(i) / real(params%n_sponge)
+        sigma_j = 0.5 * (1.0 - cos(PI * j_real))
+        state%density(M - params%n_sponge + i) = &
+          max(0.0, min(params%rho_max, &
+            state%density(M - params%n_sponge + i) &
+            * (1.0 - sigma_j * params%sponge_damping * params%dt)))
+      end do
+    end if
 
     state%t_current = state%t_current + params%dt
     state%step      = state%step + 1
@@ -208,6 +237,8 @@ contains
     call nc_check(nf90_put_att(ncid, NF90_GLOBAL, 'bc_type',       trim(params%bc_type)))
     call nc_check(nf90_put_att(ncid, NF90_GLOBAL, 'flux_type',     trim(params%flux_type)))
     call nc_check(nf90_put_att(ncid, NF90_GLOBAL, 'n_steps',       params%n_steps))
+    call nc_check(nf90_put_att(ncid, NF90_GLOBAL, 'n_sponge',       params%n_sponge))
+    call nc_check(nf90_put_att(ncid, NF90_GLOBAL, 'sponge_damping', params%sponge_damping))
 
     call nc_check(nf90_enddef(ncid))
 
