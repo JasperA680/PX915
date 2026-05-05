@@ -52,7 +52,7 @@ contains
         real    :: rnd
 
         do r = 1, size(net%roads)
-            do k = 1, 2
+            do k = 1, size(net%roads(r)%lane)
                 L = net%roads(r)%lane(k)%length
 
                 ! Open outflow at site L.
@@ -93,7 +93,7 @@ contains
         type(road_network_t), intent(inout) :: net
         integer,              intent(in)    :: n_steps
         integer,              intent(out)   :: entries(:), exits(:)
-        integer :: step, r, L1
+        integer :: step, r, k, Lk
         integer :: road_count
 
         road_count = size(net%roads)
@@ -104,21 +104,23 @@ contains
             call network_step(net)
 
             do r = 1, road_count
-                ! Inbound lane (lane 2): count new vehicles entering at site 1.
-                if (net%roads(r)%lane(2)%open_in) then
-                    if (net%roads(r)%lane(2)%cells(1) /= V_EMPTY .and. &
-                        net%roads(r)%lane(2)%old(1)   == V_EMPTY) then
-                        entries(r) = entries(r) + 1
+                do k = 1, size(net%roads(r)%lane)
+                    ! Count entry: new vehicle appeared at open-in site 1.
+                    if (net%roads(r)%lane(k)%open_in) then
+                        if (net%roads(r)%lane(k)%cells(1) /= V_EMPTY .and. &
+                            net%roads(r)%lane(k)%old(1)   == V_EMPTY) then
+                            entries(r) = entries(r) + 1
+                        end if
                     end if
-                end if
-                ! Outbound lane (lane 1): count vehicles that exited at site L.
-                if (net%roads(r)%lane(1)%open_out) then
-                    L1 = net%roads(r)%lane(1)%length
-                    if (net%roads(r)%lane(1)%cells(L1) == V_EMPTY .and. &
-                        net%roads(r)%lane(1)%old(L1)   /= V_EMPTY) then
-                        exits(r) = exits(r) + 1
+                    ! Count exit: vehicle disappeared from open-out site L.
+                    if (net%roads(r)%lane(k)%open_out) then
+                        Lk = net%roads(r)%lane(k)%length
+                        if (net%roads(r)%lane(k)%cells(Lk) == V_EMPTY .and. &
+                            net%roads(r)%lane(k)%old(Lk)   /= V_EMPTY) then
+                            exits(r) = exits(r) + 1
+                        end if
                     end if
-                end if
+                end do
             end do
         end do
     end subroutine run_network

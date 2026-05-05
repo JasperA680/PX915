@@ -31,8 +31,11 @@ program test_types
     net%junctions(1)%end_at             = [1, 1, 1, 1]
 
     do r = 1, 4
-        net%roads(r)%id              = r
-        net%roads(r)%end_junction    = [1, 0]
+        net%roads(r)%id           = r
+        net%roads(r)%end_junction = [1, 0]
+        allocate(net%roads(r)%lane(2))
+        net%roads(r)%lane(1)%flow_direction = +1   ! end_1 -> end_2
+        net%roads(r)%lane(2)%flow_direction = -1   ! end_2 -> end_1
         do ln = 1, 2
             net%roads(r)%lane(ln)%length = L
             allocate(net%roads(r)%lane(ln)%cells(L))
@@ -48,11 +51,13 @@ program test_types
     call assert(      is_occupied(V_LEFT),     'V_LEFT not occupied')
     call assert(      is_occupied(V_RIGHT),    'V_RIGHT not occupied')
 
-    !------ Lane index helpers ------------------------------------------
-    call assert(inbound_lane_idx(1)  == 2, 'inbound_lane_idx(1)')
-    call assert(inbound_lane_idx(2)  == 1, 'inbound_lane_idx(2)')
-    call assert(outbound_lane_idx(1) == 1, 'outbound_lane_idx(1)')
-    call assert(outbound_lane_idx(2) == 2, 'outbound_lane_idx(2)')
+    !------ Lane-at-end helpers (replaces old inbound/outbound_lane_idx) -
+    ! For end 1: inbound lane has flow_direction=-1, which is lane 2.
+    !            outbound lane has flow_direction=+1, which is lane 1.
+    call assert(inbound_lane_at_end(net%roads(1), 1)  == 2, 'inbound_lane_at_end(road,1)')
+    call assert(inbound_lane_at_end(net%roads(1), 2)  == 1, 'inbound_lane_at_end(road,2)')
+    call assert(outbound_lane_at_end(net%roads(1), 1) == 1, 'outbound_lane_at_end(road,1)')
+    call assert(outbound_lane_at_end(net%roads(1), 2) == 2, 'outbound_lane_at_end(road,2)')
 
     !------ count_occupied_network on an empty network ------------------
     call assert(count_occupied_network(net) == 0, 'empty network not zero')
@@ -89,10 +94,11 @@ program test_types
 
     !------ Tidy up -----------------------------------------------------
     do r = 1, 4
-        do ln = 1, 2
+        do ln = 1, size(net%roads(r)%lane)
             deallocate(net%roads(r)%lane(ln)%cells)
             deallocate(net%roads(r)%lane(ln)%old)
         end do
+        deallocate(net%roads(r)%lane)
     end do
     deallocate(net%junctions(1)%connected_road_ids)
     deallocate(net%junctions(1)%end_at)

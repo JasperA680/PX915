@@ -28,8 +28,13 @@ program test_init_crossroad
         call assert(net%roads(r)%id == r,            'road id mismatch')
         call assert(all(net%roads(r)%end_junction == [1, 0]), 'end_junction')
 
+        call assert(size(net%roads(r)%lane) == 2,    'lane count not 2')
+
         call assert(net%roads(r)%lane(1)%length == L, 'lane 1 length')
         call assert(net%roads(r)%lane(2)%length == L, 'lane 2 length')
+
+        call assert(net%roads(r)%lane(1)%flow_direction == +1, 'lane 1 flow_direction')
+        call assert(net%roads(r)%lane(2)%flow_direction == -1, 'lane 2 flow_direction')
 
         call assert(all(net%roads(r)%lane(1)%cells == V_EMPTY), 'lane 1 not empty')
         call assert(all(net%roads(r)%lane(2)%cells == V_EMPTY), 'lane 2 not empty')
@@ -45,11 +50,11 @@ program test_init_crossroad
         call assert(abs(net%roads(r)%lane(1)%beta - 0.5) < 1e-6,  'beta')
     end do
 
-    !---- Helper indexing matches ends ---------------------------------
+    !---- lane_at_end helpers consistent with allocation order ---------
     do r = 1, 4
         e = net%junctions(1)%end_at(r)
-        call assert(inbound_lane_idx(e)  == 2, 'inbound idx not 2')
-        call assert(outbound_lane_idx(e) == 1, 'outbound idx not 1')
+        call assert(inbound_lane_at_end(net%roads(r), e)  == 2, 'inbound_lane_at_end not 2')
+        call assert(outbound_lane_at_end(net%roads(r), e) == 1, 'outbound_lane_at_end not 1')
     end do
 
     !---- Print connectivity for human eyeballing -----------------------

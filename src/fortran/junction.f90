@@ -71,7 +71,7 @@ contains
         do k = 1, N
             src_road = net%junctions(jid)%connected_road_ids(k)
             src_end  = net%junctions(jid)%end_at(k)
-            src_lane = inbound_lane_idx(src_end)
+            src_lane = inbound_lane_at_end(net%roads(src_road), src_end)
             L_src    = net%roads(src_road)%lane(src_lane)%length
             holding(k) = net%roads(src_road)%lane(src_lane)%old(L_src)
         end do
@@ -103,7 +103,7 @@ contains
             if (.not. approved(k)) cycle
             src_road = net%junctions(jid)%connected_road_ids(k)
             src_end  = net%junctions(jid)%end_at(k)
-            src_lane = inbound_lane_idx(src_end)
+            src_lane = inbound_lane_at_end(net%roads(src_road), src_end)
             L_src    = net%roads(src_road)%lane(src_lane)%length
             net%roads(dst_road(k))%lane(dst_lane(k))%cells(1) = holding(k)
             net%roads(src_road)%lane(src_lane)%cells(L_src)   = V_EMPTY
@@ -132,7 +132,7 @@ contains
 
         dst_road = jn%connected_road_ids(dst_k)
         dst_end  = jn%end_at(dst_k)
-        dst_lane = outbound_lane_idx(dst_end)
+        dst_lane = dst_end          ! outbound lane index == end index for 2-lane roads (Phase 1)
     end subroutine compute_destination
 
     !-----------------------------------------------------------------

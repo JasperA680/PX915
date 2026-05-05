@@ -37,8 +37,10 @@ contains
             net%roads(i)%id           = i
             net%roads(i)%end_junction = [1, 0]
 
-            call init_lane(net%roads(i)%lane(1), lane_length)   ! end_1 -> end_2 (outbound from junction)
-            call init_lane(net%roads(i)%lane(2), lane_length)   ! end_2 -> end_1 (inbound to junction)
+            allocate(net%roads(i)%lane(2))
+
+            call init_lane(net%roads(i)%lane(1), lane_length, +1)  ! end_1->end_2, outbound from junction
+            call init_lane(net%roads(i)%lane(2), lane_length, -1)  ! end_2->end_1, inbound to junction
 
             ! Inbound lane: site 1 sits at the open end_b -> open inflow with alpha.
             net%roads(i)%lane(2)%open_in  = .true.
@@ -52,10 +54,11 @@ contains
         end do
     end subroutine init_crossroad
 
-    subroutine init_lane(ln, L)
+    subroutine init_lane(ln, L, fd)
         type(lane_t), intent(out) :: ln
-        integer, intent(in) :: L
-        ln%length = L
+        integer, intent(in) :: L, fd    ! fd: flow_direction (+1 or -1)
+        ln%length         = L
+        ln%flow_direction = fd
         allocate(ln%cells(L), ln%old(L))
         ln%cells = V_EMPTY
         ln%old   = V_EMPTY
@@ -66,10 +69,13 @@ contains
         integer :: r, ln
         if (allocated(net%roads)) then
             do r = 1, size(net%roads)
-                do ln = 1, 2
-                    if (allocated(net%roads(r)%lane(ln)%cells)) deallocate(net%roads(r)%lane(ln)%cells)
-                    if (allocated(net%roads(r)%lane(ln)%old))   deallocate(net%roads(r)%lane(ln)%old)
-                end do
+                if (allocated(net%roads(r)%lane)) then
+                    do ln = 1, size(net%roads(r)%lane)
+                        if (allocated(net%roads(r)%lane(ln)%cells)) deallocate(net%roads(r)%lane(ln)%cells)
+                        if (allocated(net%roads(r)%lane(ln)%old))   deallocate(net%roads(r)%lane(ln)%old)
+                    end do
+                    deallocate(net%roads(r)%lane)
+                end if
             end do
             deallocate(net%roads)
         end if

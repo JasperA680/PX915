@@ -52,29 +52,25 @@ contains
 
     subroutine plant(net, leg, intent_code)
         ! Place a vehicle in the holding cell of clockwise leg `leg`.
+        ! Crossroad: lane(2) is always the inbound lane (flow_direction=-1).
         type(road_network_t), intent(inout) :: net
         integer, intent(in) :: leg, intent_code
-        integer :: src_lane
-        src_lane = inbound_lane_idx(net%junctions(1)%end_at(leg))
-        net%roads(leg)%lane(src_lane)%cells(L) = intent_code
+        net%roads(leg)%lane(2)%cells(L) = intent_code
     end subroutine plant
 
     function holding_cell(net, leg) result(v)
         type(road_network_t), intent(in) :: net
         integer, intent(in) :: leg
-        integer :: v, src_lane
-        src_lane = inbound_lane_idx(net%junctions(1)%end_at(leg))
-        v = net%roads(leg)%lane(src_lane)%cells(L)
+        integer :: v
+        v = net%roads(leg)%lane(2)%cells(L)
     end function holding_cell
 
     function dest_cell(net, leg) result(v)
-        ! Read the first cell of leg's outbound lane (where its arriving
-        ! vehicle would be placed by the junction).
+        ! Read site 1 of leg's outbound lane (lane(1), flow_direction=+1).
         type(road_network_t), intent(in) :: net
         integer, intent(in) :: leg
-        integer :: v, dst_lane
-        dst_lane = outbound_lane_idx(net%junctions(1)%end_at(leg))
-        v = net%roads(leg)%lane(dst_lane)%cells(1)
+        integer :: v
+        v = net%roads(leg)%lane(1)%cells(1)
     end function dest_cell
 
     subroutine assert(cond, msg)

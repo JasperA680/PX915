@@ -14,6 +14,29 @@ The core model is a **1D TASEP** (Totally Asymmetric Simple Exclusion Process) �
 
 ---
 
+## New Files — What Each One Does
+
+### Source modules (`src/fortran/`)
+
+| File | Module | Role |
+|------|--------|------|
+| `vehicle.f90` | `vehicle_mod` | Defines the integer codes used in every cell across the whole network |
+| `road_network.f90` | `road_network_mod` | Defines all data types and the snapshot/count utilities |
+| `network_init.f90` | `network_init_mod` | Builds a concrete 4-road crossroad ready to simulate |
+| `junction.f90` | `junction_mod` | All right-of-way logic: yield rules, approval, deadlock breaking |
+| `network_simulation.f90` | `network_simulation_mod` | Drives one timestep and multi-step runs |
+
+### Tests (`tests/`)
+
+| File | Executable | What it validates |
+|------|-----------|-------------------|
+| `test_types.f90` | `build/test_types` | Data structure smoke test + indicator distribution |
+| `test_init_crossroad.f90` | `build/test_init_crossroad` | Topology, connectivity, and boundary flags |
+| `test_junction.f90` | `build/test_junction` | Nine targeted junction behaviour tests |
+| `test_network_run.f90` | `build/test_network_run` | Per-step mass conservation + steady-state symmetry |
+
+---
+
 ## Architecture Overview
 
 ```
@@ -77,46 +100,81 @@ It checks `holding` (the old snapshot), not whether B was approved. **This is in
 
 ## Phase 1 — Data Structures
 
-### `vehicle_mod` (`src/fortran/vehicle.f90`)
+### `vehicle.f90` — cell state encoding
 
-Single integer per cell encodes both occupancy and intent:
-- `V_EMPTY = 0`, `V_STRAIGHT = 1`, `V_LEFT = 2`, `V_RIGHT = 3`
+Every cell in the entire network holds one integer. That integer encodes both whether a vehicle is present and what it intends to do at the next junction:
 
-`is_occupied(cell)` = `cell /= V_EMPTY`. `sample_indicator(p_left, p_right)` assigns intent stochastically at lane entry: draw uniform r; if r < p_left → LEFT, else if r < p_left+p_right → RIGHT, else STRAIGHT.
+- `V_EMPTY = 0` — no vehicle
+- `V_STRAIGHT = 1` — vehicle going straight through
+- `V_LEFT = 2` — vehicle turning left (UK easy turn, no cross-traffic)
+- `V_RIGHT = 3` — vehicle turning right (cuts across oncoming)
 
-### `road_network_mod` (`src/fortran/road_network.f90`)
+Intent is assigned **at lane entry** by `sample_indicator(p_left, p_right)` and stays with the vehicle for its entire journey down the inbound lane. This avoids having to store intent separately and keeps occupancy checks trivially fast (`cell /= 0`).
 
-Key fields of `lane_t`:
-- `cells(:)` — current state
-- `old(:)` — parallel-update snapshot (always read from here inside a step)
-- `alpha`, `beta`, `p_left`, `p_right` — boundary parameters
-- `open_in`, `open_out` — flags controlling which ends are open boundaries vs junction-controlled
+### `road_network.f90` — data types and utilities
 
-`junction_t` stores `connected_road_ids(:)` and `end_at(:)` in clockwise order. `road_network_t` owns allocatable arrays of both.
+Defines the four types that everything else is built on:
 
-**Test**: `build/test_types` — PASS
+- **`lane_t`**: one unidirectional 1D TASEP lane. Holds `cells(:)` (current state), `old(:)` (snapshot for parallel update), and boundary parameters (`alpha`, `beta`, `p_left`, `p_right`, `open_in`, `open_out`).
+- **`road_t`**: a bidirectional road — simply a container for two opposite `lane_t`s, plus `end_junction(2)` recording which junction (if any) connects at each end.
+- **`junction_t`**: a node where roads meet. Stores `n_legs`, `connected_road_ids(:)` (clockwise), and `end_at(:)` (which end of each road touches this junction).
+- **`road_network_t`**: the top-level container — allocatable arrays of `road_t` and `junction_t`.
+
+Also provides three utilities used throughout:
+- `inbound_lane_idx(e)` / `outbound_lane_idx(e)` — convert a junction end-number into a lane index.
+- `snapshot_network(net)` — copies `cells` into `old` for every lane; called once at the start of each timestep.
+- `count_occupied_network(net)` — counts total vehicles across all cells; used by the integration test.
+
+### `tests/test_types.f90` — Phase 1 validation
+
+**What it does**: allocates a full `road_network_t` manually (4 roads × 2 lanes × 100 cells), checks the occupancy predicate on known values, then calls `sample_indicator` 10,000 times with a seeded RNG and counts outcomes.
+
+**What it prints**:
+```
+P(left)= 0.2495  P(right)= 0.2503  P(straight)= 0.5003
+test_types: OK
+```
+
+**What passes**: `is_occupied(V_EMPTY)` returns false, `is_occupied(V_LEFT)` returns true, and the sampled indicator distribution matches the expected probabilities within ±2%. Exits 0 on success, stop 1 on any failure.
 
 ---
 
 ## Phase 2 — Crossroad Initialisation
 
-### `network_init_mod` (`src/fortran/network_init.f90`)
+### `network_init.f90` — building the test network
 
-`init_crossroad` builds the 4-road crossroad:
-- 4 roads, each with 2 lanes of length L
-- 1 junction connecting all 4 roads at their end₁
-- Inbound lane (lane 2): `open_in=T`, alpha, p_left, p_right
-- Outbound lane (lane 1): `open_out=T`, beta
+`init_crossroad(net, L, alpha, beta, p_left, p_right)` builds the standard 4-road crossroad used in all subsequent tests. Concretely:
+- Allocates 4 roads and 1 junction.
+- Junction leg ordering: 1=N, 2=E, 3=S, 4=W (clockwise). All roads connect at their end₁.
+- Each road gets two lanes of length L, initialised to all V_EMPTY.
+- Lane 2 (inbound, site 1 at the open boundary): `open_in=T`, alpha, p_left, p_right set.
+- Lane 1 (outbound, site L at the open boundary): `open_out=T`, beta set.
 
-`free_network` deallocates all allocatable arrays. **Always call this at the end of a test** — gfortran doesn't complain but Valgrind will.
+`free_network(net)` deallocates all allocatable arrays. **Always call this at the end of a test** — gfortran doesn't complain but Valgrind will.
 
-**Test**: `build/test_init_crossroad` — PASS
+### `tests/test_init_crossroad.f90` — Phase 2 validation
+
+**What it does**: calls `init_crossroad`, then programmatically checks every structural property of the resulting network.
+
+**What it prints**:
+```
+Crossroad layout (clockwise):
+  road 1  N  end_a -> junction
+  road 2  E  end_a -> junction
+  road 3  S  end_a -> junction
+  road 4  W  end_a -> junction
+  inbound lane = 2 (site L = junction holding cell)
+  outbound lane = 1 (site 1 = junction destination)
+test_init_crossroad: OK
+```
+
+**What it validates**: `size(roads)==4`, `size(junctions)==1`, `n_legs==4`, `connected_road_ids==[1,2,3,4]`, `end_at==[1,1,1,1]`, `end_junction==[1,0]` on every road, all cells V_EMPTY, all lane lengths correct, `open_in`/`open_out` flags set on the right lanes, and that `inbound_lane_idx`/`outbound_lane_idx` return 2 and 1 respectively for end=1.
 
 ---
 
 ## Phase 3 — Junction Evaluation
 
-### `junction_mod` (`src/fortran/junction.f90`)
+### `junction.f90` — the right-of-way engine
 
 This is the most complex module. The right-of-way logic proceeds in seven steps inside `evaluate_one_junction`:
 
@@ -151,7 +209,39 @@ in_deadlock = any(yields_to(k,:) .and. (holding /= V_EMPTY) &
 
 One winner is picked stochastically from the deadlock set. All others are marked `deadlocked` for this timestep — the `deadlocked` flag prevents the cascade where multiple iterations keep picking more winners from a ring.
 
-**Test suite** (`build/test_junction`) — all 9 tests PASS.
+### `tests/test_junction.f90` — Phase 3 validation
+
+**What it does**: nine self-contained subtests. Each one calls `init_crossroad` with alpha=beta=0 (no boundary flow, so only the junction logic runs), manually places vehicles in specific holding cells, calls `snapshot_network` then `evaluate_junctions`, and inspects the result. A fixed RNG seed (42) makes stochastic tie-breaks reproducible.
+
+**What it prints** (one line per subtest, then a final ALL OK):
+```
+  test_dest_math OK
+  test_single_move OK
+  test_physical_block OK
+  test_yield_right OK
+  test_right_turn_yields OK
+  test_parallel_opposite_straight OK
+  test_parallel_left_left OK
+  test_mutual_right_deadlock OK
+  test_4way_straight_deadlock OK
+test_junction: ALL OK
+```
+
+**What each subtest validates**:
+
+| # | Name | Setup | Assertion |
+|---|------|-------|-----------|
+| 1 | `test_dest_math` | Calls `compute_destination` for all 12 (leg, intent) combinations | Results match the hand-worked modulo table (e.g. leg 1 STRAIGHT → road 3, leg 1 RIGHT → road 4, leg 1 LEFT → road 2) |
+| 2 | `test_single_move` | One V_STRAIGHT in leg 1 holding cell | Holding cell cleared; road 3 outbound site 1 filled |
+| 3 | `test_physical_block` | V_STRAIGHT in leg 1; road 3 outbound site 1 pre-filled | Neither cell changes — physical block prevents the move |
+| 4 | `test_yield_right` | V_STRAIGHT in legs 1 and 4 (W is to the right of N) | Leg 4 advances; leg 1 stays — yield-to-right rule |
+| 5 | `test_right_turn_yields` | V_RIGHT in leg 1, V_STRAIGHT in leg 3 (oncoming) | Leg 3 advances; leg 1 stays — R2 rule |
+| 6 | `test_parallel_opposite_straight` | V_STRAIGHT in legs 1 and 3 | Both advance in the same step — parallel through-traffic does not conflict |
+| 7 | `test_parallel_left_left` | V_LEFT in legs 1 and 3 | Both advance (leg 1 → road 2, leg 3 → road 4) — opposite left-turns do not cross |
+| 8 | `test_mutual_right_deadlock` | V_RIGHT in legs 1 and 3 | Exactly one advances; with seed 42 this is deterministic |
+| 9 | `test_4way_straight_deadlock` | V_STRAIGHT in all four legs | Exactly one advances; all four yield to each other so tie-break fires |
+
+Exits 0 if all pass, stop 1 on the first failed assertion.
 
 ### Bugs fixed in Phase 3 (before integration)
 
@@ -165,51 +255,38 @@ One winner is picked stochastically from the deadlock set. All others are marked
 
 ## Phase 4 — Network Simulation Driver
 
-### `network_simulation_mod` (`src/fortran/network_simulation.f90`)
+### `network_simulation.f90` — timestep driver
 
-**`lane_internal_step`** processes each road × lane in order:
-1. **Exit at site L** (if `open_out`): reads `old(L)`, clears `cells(L)` with probability beta.
-2. **Bulk hops** (L-1 down to 1): reads `old(i)` and `old(i+1)`; hops use old state only — strictly parallel, no cascading.
-3. **Inflow at site 1** (if `open_in`): reads `old(1)`; if empty, injects new vehicle with probability alpha, intent from `sample_indicator`.
+Exposes two public routines:
 
-**Important**: for inbound lanes (`open_in=T, open_out=F`), the exit check is skipped — the junction handles site L. For outbound lanes (`open_out=T, open_in=F`), the inflow check is skipped — the junction places vehicles at site 1.
+**`network_step(net)`** — advances the entire network by one timestep. Internally calls the three sub-phases in order: `snapshot_network` → `evaluate_junctions` → `lane_internal_step`.
+
+**`lane_internal_step(net)`** — the TASEP update for every lane in the network. For each road × lane:
+1. **Exit at site L** (only if `open_out=T`): reads `old(L)`, clears `cells(L)` with probability beta. This is the open boundary outflow.
+2. **Bulk hops** (sites L-1 down to 1): if `old(i) /= EMPTY` and `old(i+1) == EMPTY`, the vehicle hops — `cells(i+1)` gets the vehicle, `cells(i)` cleared. Reads entirely from `old` so hops are strictly parallel (a vehicle moves at most one site per step).
+3. **Inflow at site 1** (only if `open_in=T`): reads `old(1)`; if empty, tries to inject a new vehicle with probability alpha. Intent is assigned by `sample_indicator`. This is the open boundary inflow.
+
+The `open_in`/`open_out` flags ensure lane roles don't overlap with the junction: inbound lanes skip the exit (junction handles it); outbound lanes skip the inflow (junction places vehicles there).
+
+**`run_network(net, n_steps, entries, exits)`** — multi-step driver. Runs `n_steps` calls to `network_step` and counts cumulative entries (new vehicles at inbound site 1) and exits (vehicles leaving outbound site L) per road. Used for computing steady-state currents.
 
 ---
 
 ## Phase 5 — Integration Soak Test & Mass Conservation Bug
 
-### `test_network_run.f90` (`tests/test_network_run.f90`)
+### `tests/test_network_run.f90` — integration validation
 
-Runs α=0.4, β=0.5, p_left=p_right=0.25, L=20, 500-step burnin, 5000-step production run. Per-step mass check: `n_after == n_before + entries - exits`. Symmetry check: max/min per-road exit current within 20%.
+**What it does**: builds a crossroad with L=20, α=0.4, β=0.5, p_left=p_right=0.25. Runs 500 burnin steps (discarded — allows the network to reach steady state), then 5000 production steps with two checks:
 
-### Debugging process
+1. **Per-step mass conservation**: at every step, counts entries (inbound site 1 was empty before, non-empty after) and exits (outbound site L was non-empty before, empty after) and asserts `n_after == n_before + entries - exits`. If this fails, it prints the exact step number, counts, and stops immediately.
 
-**Step 1**: original test was wrong — it captured `n_initial=0` before burnin. Rewritten to capture `n_before` after burnin and check per step.
+2. **Steady-state symmetry**: after 5000 steps, prints the cumulative entry/exit counts and mean currents per road, then asserts that the maximum per-road exit current is non-zero and that the ratio `(max - min) / max < 0.20` (20% tolerance). Because the crossroad is geometrically symmetric, all four roads should carry similar traffic.
 
-**Step 2**: per-step check failed at step 173 (n=64, entries=1, exits=1, expected=64, actual=63). Added `network_step_debug` to count after each sub-phase:
-```
-before snapshot  =  64
-after junctions  =  63   ← vehicle lost here
-after lane_step  =  63
-```
-
-**Step 3**: injected an overwrite-detector into the commit loop. Confirmed two approved vehicles writing to the same destination cell.
-
-**Step 4**: traced the exact scenario causing the bug:
-- Leg 3 (V_LEFT) approved in first pass (no yield targets).
-- Leg 1 (V_RIGHT) yielded to leg 3 via R2 AND to leg 4 via R1.
-- Deadlock resolver saw leg 1's yield to leg 3 as "resolved" (leg 3 is approved, `.not. approved(3)` = false), leaving only leg 4 blocking leg 1.
-- Leg 4 was blocked by approved leg 3, so not counted as "in deadlock."
-- Resolver approved leg 1 — overriding its outstanding yield to approved leg 3.
-- Both leg 1 and leg 3 committed to road 4, lane 1, site 1. One vehicle destroyed.
-
-**Fix**: added the second condition to `in_deadlock` (see Phase 3 section above). A vehicle that yields to any already-approved vehicle is not a deadlock member — it simply waits this step.
-
-### Final output
-
+**What it prints on success**:
 ```
 PASS: mass conservation OK (all 5000 steps)
 
+--- Per-road outbound currents ---
  Road  Entries  Exits  J_in   J_out
     1    1353    1335  0.2706  0.2670
     2    1364    1351  0.2728  0.2702
@@ -221,7 +298,34 @@ PASS: per-road currents are non-zero and symmetric
 test_network_run: ALL OK
 ```
 
-All four executables compile with **zero warnings** in the new modules (pre-existing warnings are in the original `tasep.f90` and are not our concern).
+**What it prints on failure**: the step number, n_before, step_entries, step_exits, expected and actual counts, then stop 1. This makes the failing step trivially identifiable for debugging.
+
+### Debugging process that led to the final fix
+
+**Step 1 — wrong baseline**: the original test captured `n_initial=0` before burnin, so 500 steps of vehicle accumulation made the final count look wrong. Rewritten to capture `n_before` after burnin and check per step.
+
+**Step 2 — isolating the phase**: per-step check failed at step 173. Added a debug subroutine that counted vehicles after each sub-phase:
+```
+before snapshot  =  64
+after junctions  =  63   ← vehicle lost here
+after lane_step  =  63
+```
+
+**Step 3 — finding the overwrite**: injected a detector into the commit loop that printed whenever it was about to write to a non-empty destination cell. Confirmed two approved vehicles both writing to road 4, lane 1, site 1.
+
+**Step 4 — tracing the logic failure**:
+- Leg 3 (V_LEFT) had no yield targets → approved in the first pass.
+- Leg 1 (V_RIGHT) yielded to leg 3 by R2 (right-turn yields to oncoming left) **and** to leg 4 by R1.
+- The deadlock resolver saw leg 1's yield to leg 3 as "cleared" (leg 3 was approved, so `.not. approved(3)` = false). Only leg 4 was still blocking leg 1.
+- Leg 4 was blocked by approved leg 3, so it was not "in deadlock" either.
+- The resolver declared leg 1 the sole deadlock member and approved it — **overriding its outstanding yield to already-approved leg 3**.
+- Both committed to the same destination. One vehicle was destroyed.
+
+**Fix**: a candidate only enters the deadlock set if it yields to **no** already-approved vehicle — one extra boolean condition added to `in_deadlock`. If any yield target is already approved, the candidate simply waits this step (it was always going to lose that interaction; the deadlock machinery should not override it).
+
+### Final results
+
+All 9 Phase 3 unit tests still pass after the fix. Integration test: 5000 steps, zero mass violations, per-road currents vary by ≈4% (well within the 20% tolerance). All four executables build with **zero warnings** in the new modules.
 
 ---
 

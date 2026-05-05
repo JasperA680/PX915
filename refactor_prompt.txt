@@ -1,0 +1,144 @@
+Act as a Senior Scientific Software Architect. I have an existing Fortran 2008 road network traffic simulation and need a detailed implementation plan for a structural refactor. Read everything below carefully before producing the plan.
+
+---
+
+## What the codebase is
+
+A 1D TASEP (Totally Asymmetric Simple Exclusion Process) traffic model extended to a road network with junctions. Vehicles are integers in a 1D array: V_EMPTY=0, V_STRAIGHT=1, V_LEFT=2, V_RIGHT=3. Each timestep: snapshot all arrays → evaluate junctions → TASEP hop all lanes. All reads come from the `old` snapshot; writes go to `cells`. This parallel-update invariant must be preserved throughout the refactor.
+
+Five source modules (in dependency order):
+
+1. `vehicle_mod` (vehicle.f90) — V_* constants, `is_occupied`, `sample_indicator(p_left, p_right)`
+2. `road_network_mod` (road_network.f90) — data types, `snapshot_network`, `count_occupied_network`, `inbound_lane_idx`, `outbound_lane_idx`
+3. `network_init_mod` (network_init.f90) — `init_crossroad`, `free_network`
+4. `junction_mod` (junction.f90) — `evaluate_junctions`, `compute_destination`, `build_yield_matrix`, `approve_pass`, `resolve_deadlocks`, `paths_conflict`
+5. `network_simulation_mod` (network_simulation.f90) — `network_step`, `lane_internal_step`, `run_network`
+
+Four tests:
+- `tests/test_types.f90` → `build/test_types`
+- `tests/test_init_crossroad.f90` → `build/test_init_crossroad`
+- `tests/test_junction.f90` → `build/test_junction` (9 unit tests of junction logic)
+- `tests/test_network_run.f90` → `build/test_network_run` (5000-step mass conservation + symmetry soak test)
+
+All four currently pass. The refactor must leave all four passing.
+
+---
+
+## Current data structures (the problem)
+
+```fortran
+type :: lane_t
+    integer :: length = 0
+    integer, allocatable :: cells(:), old(:)
+    real    :: alpha=0, beta=0, p_left=0, p_right=0
+    logical :: open_in=.false., open_out=.false.
+end type
+
+type :: road_t
+    integer      :: id = 0
+    type(lane_t) :: lane(2)          ! FIXED: exactly one lane each direction
+    integer      :: end_junction(2) = 0
+end type
+
+type :: junction_t
+    integer :: id=0, n_legs=0
+    integer, allocatable :: connected_road_ids(:)   ! clockwise
+    integer, allocatable :: end_at(:)               ! 1 or 2: which road end
+end type
+
+type :: road_network_t
+    type(road_t),     allocatable :: roads(:)
+    type(junction_t), allocatable :: junctions(:)
+end type
+```
+
+The junction currently assumes: each leg = one road, each road contributes exactly one inbound lane (site L, holding cell) and one outbound lane (site 1, destination). `n_legs` inputs always equals `n_legs` outputs.
+
+`inbound_lane_idx(end)` = 3-end, `outbound_lane_idx(end)` = end — these are the functions that map a junction end-number to a lane index. They currently hard-code the two-lane-per-road assumption.
+
+---
+
+## What we want after the refactor
+
+### Goal 1: lane_t is the simulation primitive; road_t is a grouping wrapper
+
+`road_t` should hold an **allocatable** array of lanes with a variable count. It is a semantic grouping of laterally-adjacent lanes (for future overtaking logic, human readability, init convenience). The junction must talk to **lanes** directly, not roads.
+
+A one-way single-lane road: 1 lane, flowing in one direction.
+A dual carriageway: 4 lanes (2 each way), all in one `road_t`.
+A one-way two-lane road: 2 lanes, same direction.
+
+Lane direction should be encoded on the lane itself (a flag or a convention: e.g. `flow_direction = 1` means end_1→end_2, `flow_direction = -1` means end_2→end_1, with site 1 always being the entry end regardless).
+
+### Goal 2: junction connects to lanes, not roads
+
+`junction_t` should store lists of inbound lanes and outbound lanes as `(road_id, lane_idx)` pairs — or equivalently as indices into a flat lane list if you prefer that architecture. The clockwise ordering used for yield rules applies to the **inbound lanes**.
+
+Unequal inputs and outputs must be supported: a merge junction (2 inbound, 1 outbound), a diverge (1 inbound, 2 outbound), a T-junction (2 inbound, 2 outbound with asymmetric layout). The junction algorithm should not assume `n_in == n_out`.
+
+### Goal 3: turning probabilities live at the junction, not the lane entry
+
+Currently `p_left` and `p_right` on `lane_t` cause vehicles to be assigned an intent (V_STRAIGHT/V_LEFT/V_RIGHT) when they *enter* the network at an open boundary. This only works for single-junction networks.
+
+After the refactor:
+- Vehicle cells carry only V_EMPTY or V_OCCUPIED (a new constant, value=1). Intent codes V_STRAIGHT/V_LEFT/V_RIGHT are removed or retired.
+- Each inbound lane at a junction has a **probability distribution over outbound lanes**: `route_prob(n_out)` — the probability that a vehicle from this inbound lane exits via each outbound lane. These probabilities sum to 1.
+- When the junction processes a vehicle in a holding cell, it samples its destination outbound lane from `route_prob` before applying the yield rules.
+- Open boundary inflow (`open_in=T`, alpha) injects vehicles with just V_OCCUPIED.
+- `p_left` and `p_right` are removed from `lane_t`. They are replaced by `route_prob(:)` on the junction's per-inbound-leg record.
+
+This means a future GUI can define: "70% of vehicles entering from the north go east, 30% go south" — specified as `route_prob = [0.7, 0.3]` on that inbound lane's junction record, without any concept of LEFT/RIGHT/STRAIGHT in the model layer.
+
+### Goal 4: the yield rules must still work
+
+The current yield logic (R1 yield-to-right, R2 right-turn yields oncoming, R3 opposite-leg scan, deadlock breaker) was designed for a 4-way crossroad. With the intent-code system removed, these rules need to be re-expressed geometrically:
+
+- **Physical block**: a vehicle cannot enter an outbound lane whose `old(1) /= V_EMPTY`. Unchanged.
+- **Yield-to-right**: the vehicle in the inbound lane that is one step clockwise-previous in the ordered list yields if its path conflicts with the vehicle to its right. Path conflict now needs to be determined from *which outbound lane each vehicle is headed to* (their sampled destinations), not from V_LEFT/V_RIGHT/V_STRAIGHT codes.
+- A path conflict between inbound leg i and inbound leg j occurs if their chosen outbound lanes are the same OR if their physical trajectories through the junction cross. For the 4-way crossroad case, the crossing geometry is the same as before; it just needs to be determined from `(in_leg, out_lane)` pairs rather than intent codes.
+- The deadlock breaker fix (a candidate is only "in deadlock" if it yields to no already-approved vehicle) must be preserved exactly.
+
+### What must NOT change
+
+- `lane_t` internal structure: `cells(:)`, `old(:)`, `length`, `alpha`, `beta`, `open_in`, `open_out` — all stay. Only `p_left`, `p_right` are removed.
+- `snapshot_network`, `count_occupied_network` — logic unchanged, just updated to iterate over variable-count lanes.
+- `lane_internal_step` — logic unchanged. Open inflow injects V_OCCUPIED instead of a sampled indicator. Open outflow with beta unchanged.
+- The parallel-update invariant: junction reads `old`, lane step reads `old`, both write `cells`.
+- All four existing tests must pass. `test_junction.f90` will need updating since it plants V_STRAIGHT/V_LEFT/V_RIGHT directly — these tests should be rewritten to plant V_OCCUPIED and specify route probabilities on the junction instead.
+- `tasep.f90`, `simulation.f90`, `io.f90` — existing single-lattice code entirely untouched.
+
+---
+
+## Key design decisions already made (do not relitigate)
+
+1. **Clockwise array rule**: inbound lanes of a junction are stored in strict clockwise order. All yield logic is modulo arithmetic on array indices.
+2. **Parallel update**: snapshot → junction → lane. Both junction and lane read from `old`.
+3. **Full-step yield semantics**: if a vehicle must yield to vehicle B, it waits the entire step even if B also moves.
+4. **Deadlock breaker**: one winner picked stochastically; all other deadlock-set members marked with a `deadlocked` flag for this step. A candidate is only in the deadlock set if it yields to no already-approved vehicle (this is a subtle fix that must be preserved — see the bug note below).
+5. **UK driving convention**: in a 4-way junction, left is the easy turn (clockwise next), right cuts across oncoming. The clockwise ordering of inbound legs encodes this geometrically.
+
+**Critical bug that was fixed and must stay fixed**: in `resolve_deadlocks`, a candidate is only eligible as a deadlock winner if `not any(yields_to(k,:) .and. holding/=EMPTY .and. approved)`. Without this, a vehicle that yields to an already-approved vehicle can be incorrectly picked as a deadlock winner and commit to the same destination cell, destroying a vehicle. This is the single most important correctness invariant in the junction logic.
+
+---
+
+## What the plan should produce
+
+A phased implementation plan with:
+
+1. **Exact new data structure definitions** in Fortran 2008 for `lane_t`, `road_t`, `junction_t`, `road_network_t` — with all fields specified including types, intents, and whether allocatable.
+
+2. **How route_prob is stored**: on the junction (per inbound leg), or on the lane (end-of-lane routing), or as a separate type. Be explicit about the data layout.
+
+3. **How path conflicts are determined** without intent codes — what information is used to decide if inbound leg i's chosen destination conflicts with inbound leg j's chosen destination. Provide the geometric rule clearly.
+
+4. **Updated yield matrix construction** — what replaces `build_yield_matrix` and `paths_conflict` now that V_LEFT/V_RIGHT/V_STRAIGHT are gone.
+
+5. **Updated `init_crossroad`** — show how the existing 4-way crossroad is expressed in the new types, including how `route_prob` is set to reproduce the current p_left=0.25, p_right=0.25, p_straight=0.5 behaviour.
+
+6. **A new `init_*` example** for a T-junction (2 inbound, 2 outbound) to demonstrate the generalisation works.
+
+7. **Updated test plan** — which existing tests change, what new tests are needed, what each test validates.
+
+8. **Phase order** — which modules change first, in what order, with a working build after each phase.
+
+Halt the plan at each phase boundary and describe what a passing test looks like before proceeding to the next phase. Do not produce a plan that requires all five modules to change simultaneously.
