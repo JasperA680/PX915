@@ -48,12 +48,12 @@ contains
 
         integer, parameter :: MAX_LEGS = 4
 
-        integer :: N, k, src_road, src_lane, src_end, L_src
-        integer :: dst_road(MAX_LEGS), dst_lane(MAX_LEGS), dst_end_arr(MAX_LEGS)
+        integer :: N, k, src_road, src_lane, L_src
+        integer :: dst_road(MAX_LEGS), dst_lane(MAX_LEGS), dst_end_dummy
         integer :: holding(MAX_LEGS)
         logical :: phys_clear(MAX_LEGS), yields_to(MAX_LEGS, MAX_LEGS), approved(MAX_LEGS)
 
-        N = net%junctions(jid)%n_legs
+        N = net%junctions(jid)%n_in
         if (N > MAX_LEGS) then
             print *, 'evaluate_one_junction: N exceeds MAX_LEGS'
             stop 1
@@ -62,25 +62,23 @@ contains
         holding    = V_EMPTY
         dst_road   = 0
         dst_lane   = 0
-        dst_end_arr = 0
         phys_clear = .false.
         yields_to  = .false.
         approved   = .false.
 
         ! 1. Read holding cells from the old snapshot.
         do k = 1, N
-            src_road = net%junctions(jid)%connected_road_ids(k)
-            src_end  = net%junctions(jid)%end_at(k)
-            src_lane = inbound_lane_at_end(net%roads(src_road), src_end)
-            L_src    = net%roads(src_road)%lane(src_lane)%length
+            src_road   = net%junctions(jid)%in_road(k)
+            src_lane   = net%junctions(jid)%in_lane(k)
+            L_src      = net%roads(src_road)%lane(src_lane)%length
             holding(k) = net%roads(src_road)%lane(src_lane)%old(L_src)
         end do
 
-        ! 2. Resolve destinations.
+        ! 2. Resolve destinations via intent code + outbound flat list.
         do k = 1, N
             if (holding(k) == V_EMPTY) cycle
             call compute_destination(net%junctions(jid), k, holding(k), &
-                                     dst_road(k), dst_lane(k), dst_end_arr(k))
+                                     dst_road(k), dst_lane(k), dst_end_dummy)
         end do
 
         ! 3. Physical-clear check (destination site 1 in the old snapshot).
@@ -101,9 +99,8 @@ contains
         ! 7. Commit approved moves.
         do k = 1, N
             if (.not. approved(k)) cycle
-            src_road = net%junctions(jid)%connected_road_ids(k)
-            src_end  = net%junctions(jid)%end_at(k)
-            src_lane = inbound_lane_at_end(net%roads(src_road), src_end)
+            src_road = net%junctions(jid)%in_road(k)
+            src_lane = net%junctions(jid)%in_lane(k)
             L_src    = net%roads(src_road)%lane(src_lane)%length
             net%roads(dst_road(k))%lane(dst_lane(k))%cells(1) = holding(k)
             net%roads(src_road)%lane(src_lane)%cells(L_src)   = V_EMPTY
@@ -117,22 +114,24 @@ contains
         type(junction_t), intent(in)  :: jn
         integer,          intent(in)  :: k, intent_code
         integer,          intent(out) :: dst_road, dst_lane, dst_end
-        integer :: dst_k
+        integer :: dst_out_idx
 
+        ! Map intent to outbound index using the same clockwise modulo arithmetic.
+        ! n_in == n_out for symmetric junctions; outbound ordering matches inbound.
         select case (intent_code)
         case (V_STRAIGHT)
-            dst_k = mod(k + jn%n_legs/2 - 1, jn%n_legs) + 1
+            dst_out_idx = mod(k + jn%n_in/2 - 1, jn%n_in) + 1
         case (V_LEFT)
-            dst_k = mod(k,                   jn%n_legs) + 1
+            dst_out_idx = mod(k,                  jn%n_in) + 1
         case (V_RIGHT)
-            dst_k = mod(k + jn%n_legs - 2,   jn%n_legs) + 1
+            dst_out_idx = mod(k + jn%n_in - 2,   jn%n_in) + 1
         case default
-            dst_k = k                   ! invalid intent: self-loop, physical block will stop it
+            dst_out_idx = k   ! invalid intent: self-loop, physical block will stop it
         end select
 
-        dst_road = jn%connected_road_ids(dst_k)
-        dst_end  = jn%end_at(dst_k)
-        dst_lane = dst_end          ! outbound lane index == end index for 2-lane roads (Phase 1)
+        dst_road = jn%out_road(dst_out_idx)
+        dst_lane = jn%out_lane(dst_out_idx)
+        dst_end  = 0   ! no longer meaningful; retained for interface compatibility
     end subroutine compute_destination
 
     !-----------------------------------------------------------------
@@ -144,7 +143,7 @@ contains
         logical,          intent(out) :: yields_to(:,:)
         integer :: N, i, right_of_i, opp
 
-        N = jn%n_legs
+        N = jn%n_in
         yields_to = .false.
 
         do i = 1, N

@@ -23,12 +23,15 @@ program test_types
     allocate(net%roads(4))
     allocate(net%junctions(1))
 
-    net%junctions(1)%id     = 1
-    net%junctions(1)%n_legs = 4
-    allocate(net%junctions(1)%connected_road_ids(4))
-    allocate(net%junctions(1)%end_at(4))
-    net%junctions(1)%connected_road_ids = [1, 2, 3, 4]
-    net%junctions(1)%end_at             = [1, 1, 1, 1]
+    net%junctions(1)%id   = 1
+    net%junctions(1)%n_in = 4
+    net%junctions(1)%n_out = 4
+    allocate(net%junctions(1)%in_road(4),  net%junctions(1)%in_lane(4))
+    allocate(net%junctions(1)%out_road(4), net%junctions(1)%out_lane(4))
+    net%junctions(1)%in_road  = [1, 2, 3, 4]
+    net%junctions(1)%in_lane  = [2, 2, 2, 2]
+    net%junctions(1)%out_road = [1, 2, 3, 4]
+    net%junctions(1)%out_lane = [1, 1, 1, 1]
 
     do r = 1, 4
         net%roads(r)%id           = r
@@ -100,8 +103,8 @@ program test_types
         end do
         deallocate(net%roads(r)%lane)
     end do
-    deallocate(net%junctions(1)%connected_road_ids)
-    deallocate(net%junctions(1)%end_at)
+    deallocate(net%junctions(1)%in_road,  net%junctions(1)%in_lane)
+    deallocate(net%junctions(1)%out_road, net%junctions(1)%out_lane)
     deallocate(net%roads)
     deallocate(net%junctions)
     deallocate(seed)

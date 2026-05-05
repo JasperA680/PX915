@@ -10,7 +10,7 @@ program test_init_crossroad
 
     integer, parameter :: L = 25
     type(road_network_t) :: net
-    integer :: r, e
+    integer :: r
 
     call init_crossroad(net, L, 0.4, 0.5, 0.25, 0.25)
 
@@ -19,9 +19,12 @@ program test_init_crossroad
     call assert(size(net%junctions) == 1, 'wrong number of junctions')
 
     !---- Junction wiring ----------------------------------------------
-    call assert(net%junctions(1)%n_legs == 4, 'n_legs')
-    call assert(all(net%junctions(1)%connected_road_ids == [1,2,3,4]), 'clockwise ids')
-    call assert(all(net%junctions(1)%end_at             == [1,1,1,1]), 'end_at all 1')
+    call assert(net%junctions(1)%n_in  == 4,                 'n_in')
+    call assert(net%junctions(1)%n_out == 4,                 'n_out')
+    call assert(all(net%junctions(1)%in_road  == [1,2,3,4]), 'in_road clockwise')
+    call assert(all(net%junctions(1)%out_road == [1,2,3,4]), 'out_road clockwise')
+    call assert(all(net%junctions(1)%in_lane  == [2,2,2,2]), 'in_lane all 2')
+    call assert(all(net%junctions(1)%out_lane == [1,1,1,1]), 'out_lane all 1')
 
     !---- Per-road wiring ----------------------------------------------
     do r = 1, 4
@@ -50,11 +53,11 @@ program test_init_crossroad
         call assert(abs(net%roads(r)%lane(1)%beta - 0.5) < 1e-6,  'beta')
     end do
 
-    !---- lane_at_end helpers consistent with allocation order ---------
+    !---- lane_at_end helpers consistent with junction flat lists ------
     do r = 1, 4
-        e = net%junctions(1)%end_at(r)
-        call assert(inbound_lane_at_end(net%roads(r), e)  == 2, 'inbound_lane_at_end not 2')
-        call assert(outbound_lane_at_end(net%roads(r), e) == 1, 'outbound_lane_at_end not 1')
+        ! All crossroad roads connect at end_1; verify lane_at_end agrees with flat lists.
+        call assert(inbound_lane_at_end(net%roads(r), 1)  == net%junctions(1)%in_lane(r),  'in_lane vs lane_at_end')
+        call assert(outbound_lane_at_end(net%roads(r), 1) == net%junctions(1)%out_lane(r), 'out_lane vs lane_at_end')
     end do
 
     !---- Print connectivity for human eyeballing -----------------------

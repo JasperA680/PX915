@@ -40,10 +40,13 @@ module road_network_mod
     end type road_t
 
     type, public :: junction_t
-        integer :: id     = 0
-        integer :: n_legs = 0                  ! 3 (T) or 4 (cross)
-        integer, allocatable :: connected_road_ids(:)   ! strict clockwise order
-        integer, allocatable :: end_at(:)               ! 1 or 2: which end of each road we touch
+        integer :: id   = 0
+        integer :: n_in = 0                    ! number of inbound lanes (clockwise-ordered)
+        integer :: n_out = 0                   ! number of outbound lanes (clockwise-ordered)
+        integer, allocatable :: in_road(:)     ! road id for inbound leg k   (length n_in)
+        integer, allocatable :: in_lane(:)     ! lane index within road      (length n_in)
+        integer, allocatable :: out_road(:)    ! road id for outbound leg k  (length n_out)
+        integer, allocatable :: out_lane(:)    ! lane index within road      (length n_out)
     end type junction_t
 
     type, public :: road_network_t

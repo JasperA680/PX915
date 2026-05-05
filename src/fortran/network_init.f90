@@ -26,12 +26,14 @@ contains
         allocate(net%roads(4))
         allocate(net%junctions(1))
 
-        net%junctions(1)%id     = 1
-        net%junctions(1)%n_legs = 4
-        allocate(net%junctions(1)%connected_road_ids(4))
-        allocate(net%junctions(1)%end_at(4))
-        net%junctions(1)%connected_road_ids = [1, 2, 3, 4]
-        net%junctions(1)%end_at             = [1, 1, 1, 1]
+        net%junctions(1)%id   = 1
+        net%junctions(1)%n_in = 4
+        net%junctions(1)%n_out = 4
+        allocate(net%junctions(1)%in_road(4),  net%junctions(1)%in_lane(4))
+        allocate(net%junctions(1)%out_road(4), net%junctions(1)%out_lane(4))
+        ! Roads in clockwise order (1=N, 2=E, 3=S, 4=W); all at end_1.
+        net%junctions(1)%in_road  = [1, 2, 3, 4]
+        net%junctions(1)%out_road = [1, 2, 3, 4]
 
         do i = 1, 4
             net%roads(i)%id           = i
@@ -51,6 +53,10 @@ contains
             ! Outbound lane: site L sits at the open end_b -> open outflow with beta.
             net%roads(i)%lane(1)%open_out = .true.
             net%roads(i)%lane(1)%beta     = beta
+
+            ! Register this road's inbound/outbound lanes with the junction.
+            net%junctions(1)%in_lane(i)  = inbound_lane_at_end(net%roads(i), 1)
+            net%junctions(1)%out_lane(i) = outbound_lane_at_end(net%roads(i), 1)
         end do
     end subroutine init_crossroad
 
@@ -81,8 +87,10 @@ contains
         end if
         if (allocated(net%junctions)) then
             do r = 1, size(net%junctions)
-                if (allocated(net%junctions(r)%connected_road_ids)) deallocate(net%junctions(r)%connected_road_ids)
-                if (allocated(net%junctions(r)%end_at))             deallocate(net%junctions(r)%end_at)
+                if (allocated(net%junctions(r)%in_road))  deallocate(net%junctions(r)%in_road)
+                if (allocated(net%junctions(r)%in_lane))  deallocate(net%junctions(r)%in_lane)
+                if (allocated(net%junctions(r)%out_road)) deallocate(net%junctions(r)%out_road)
+                if (allocated(net%junctions(r)%out_lane)) deallocate(net%junctions(r)%out_lane)
             end do
             deallocate(net%junctions)
         end if
