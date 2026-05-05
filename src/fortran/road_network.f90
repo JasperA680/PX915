@@ -4,6 +4,7 @@ module road_network_mod
     !
     !   lane_t           a strictly unidirectional 1D TASEP lane
     !   road_t           a container of laterally-adjacent lanes
+    !   leg_route_t      per-inbound-leg outbound probability distribution
     !   junction_t       a node connecting roads in clockwise order
     !   road_network_t   the master container of roads and junctions
     !
@@ -27,8 +28,6 @@ module road_network_mod
         integer, allocatable :: old(:)    ! parallel-update snapshot
         real    :: alpha   = 0.0
         real    :: beta    = 0.0
-        real    :: p_left  = 0.0
-        real    :: p_right = 0.0
         logical :: open_in  = .false.     ! site 1 is open inflow
         logical :: open_out = .false.     ! site L is open outflow
     end type lane_t
@@ -39,6 +38,10 @@ module road_network_mod
         integer :: end_junction(2) = 0         ! 0 = open boundary
     end type road_t
 
+    type, public :: leg_route_t
+        real, allocatable :: prob(:)           ! length n_out, sums to 1
+    end type leg_route_t
+
     type, public :: junction_t
         integer :: id   = 0
         integer :: n_in = 0                    ! number of inbound lanes (clockwise-ordered)
@@ -47,6 +50,7 @@ module road_network_mod
         integer, allocatable :: in_lane(:)     ! lane index within road      (length n_in)
         integer, allocatable :: out_road(:)    ! road id for outbound leg k  (length n_out)
         integer, allocatable :: out_lane(:)    ! lane index within road      (length n_out)
+        type(leg_route_t), allocatable :: in_routes(:)  ! length n_in
     end type junction_t
 
     type, public :: road_network_t

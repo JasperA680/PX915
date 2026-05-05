@@ -3,9 +3,11 @@ program test_junction
     ! Phase 3 validation suite for evaluate_junctions.
     !
     ! Each test_* subroutine constructs a fresh crossroad, plants
-    ! vehicles in specific holding cells, runs evaluate_junctions, and
-    ! checks the resulting state.  Tests use a fixed RNG seed so that
-    ! stochastic tie-breaks are reproducible.
+    ! V_OCCUPIED into specific holding cells, force-routes them to
+    ! deterministic destinations via force_route (Kronecker-delta prob),
+    ! runs evaluate_junctions, and checks the resulting state.
+    ! Tests use a fixed RNG seed so that stochastic tie-breaks are
+    ! reproducible.
     !--------------------------------------------------------------------
     use vehicle_mod
     use road_network_mod
@@ -47,16 +49,25 @@ contains
 
     subroutine fresh(net)
         type(road_network_t), intent(out) :: net
-        call init_crossroad(net, L, 0.0, 0.0, 0.0, 0.0)        ! no inflow/outflow during these unit tests
+        ! p_left=p_right=0 => all in_routes point to STRAIGHT (prob=1).
+        call init_crossroad(net, L, 0.0, 0.0, 0.0, 0.0)
     end subroutine fresh
 
-    subroutine plant(net, leg, intent_code)
-        ! Place a vehicle in the holding cell of clockwise leg `leg`.
-        ! Crossroad: lane(2) is always the inbound lane (flow_direction=-1).
+    subroutine plant(net, leg)
+        ! Place V_OCCUPIED in the holding cell (site L of inbound lane 2) for leg.
         type(road_network_t), intent(inout) :: net
-        integer, intent(in) :: leg, intent_code
-        net%roads(leg)%lane(2)%cells(L) = intent_code
+        integer, intent(in) :: leg
+        net%roads(leg)%lane(2)%cells(L) = V_OCCUPIED
     end subroutine plant
+
+    subroutine force_route(net, jid, leg, out_idx)
+        ! Set in_routes(leg)%prob to a Kronecker delta on out_idx so
+        ! destination sampling is deterministic for this leg.
+        type(road_network_t), intent(inout) :: net
+        integer, intent(in) :: jid, leg, out_idx
+        net%junctions(jid)%in_routes(leg)%prob        = 0.0
+        net%junctions(jid)%in_routes(leg)%prob(out_idx) = 1.0
+    end subroutine force_route
 
     function holding_cell(net, leg) result(v)
         type(road_network_t), intent(in) :: net
@@ -83,54 +94,38 @@ contains
     end subroutine assert
 
     !-----------------------------------------------------------------
-    ! 1. Destination math: hand-worked table.
+    ! 1. Destination math: exercise move_category directly.
+    !    Categories: 1=LEFT, 2=STRAIGHT, 3=RIGHT, 0=UTURN.
+    !    For n=4: d=modulo(out-in,4); d=1->LEFT, d=2->STRAIGHT, d=3->RIGHT.
     !-----------------------------------------------------------------
     subroutine test_dest_math()
-        type(road_network_t) :: net
-        integer :: dst_road, dst_lane, dst_end, k
-
-        call fresh(net)
-
-        ! From leg 1 (N): straight->3, right->4, left->2
-        call compute_destination(net%junctions(1), 1, V_STRAIGHT, dst_road, dst_lane, dst_end)
-        call assert(dst_road == 3, 'k=1 STRAIGHT')
-        call compute_destination(net%junctions(1), 1, V_RIGHT,    dst_road, dst_lane, dst_end)
-        call assert(dst_road == 4, 'k=1 RIGHT')
-        call compute_destination(net%junctions(1), 1, V_LEFT,     dst_road, dst_lane, dst_end)
-        call assert(dst_road == 2, 'k=1 LEFT')
-
-        ! Spot-check the rest.
-        call compute_destination(net%junctions(1), 2, V_STRAIGHT, dst_road, dst_lane, dst_end)
-        call assert(dst_road == 4, 'k=2 STRAIGHT')
-        call compute_destination(net%junctions(1), 2, V_RIGHT,    dst_road, dst_lane, dst_end)
-        call assert(dst_road == 1, 'k=2 RIGHT')
-        call compute_destination(net%junctions(1), 3, V_LEFT,     dst_road, dst_lane, dst_end)
-        call assert(dst_road == 4, 'k=3 LEFT')
-        call compute_destination(net%junctions(1), 4, V_STRAIGHT, dst_road, dst_lane, dst_end)
-        call assert(dst_road == 2, 'k=4 STRAIGHT')
-
-        ! All destinations should be outbound lane 1 (since end_at = 1 everywhere here).
-        do k = 1, 4
-            call compute_destination(net%junctions(1), k, V_STRAIGHT, dst_road, dst_lane, dst_end)
-            call assert(dst_lane == 1, 'destination is outbound lane')
-        end do
-
-        call free_network(net)
+        ! From leg 1 (N): LEFT->2, STRAIGHT->3, RIGHT->4
+        call assert(move_category(1, 2, 4) == 1, 'k=1 out=2 LEFT')
+        call assert(move_category(1, 3, 4) == 2, 'k=1 out=3 STRAIGHT')
+        call assert(move_category(1, 4, 4) == 3, 'k=1 out=4 RIGHT')
+        call assert(move_category(1, 1, 4) == 0, 'k=1 out=1 UTURN')
+        ! Spot-check other legs.
+        call assert(move_category(2, 4, 4) == 2, 'k=2 out=4 STRAIGHT')
+        call assert(move_category(2, 1, 4) == 3, 'k=2 out=1 RIGHT')
+        call assert(move_category(3, 4, 4) == 1, 'k=3 out=4 LEFT')
+        call assert(move_category(4, 2, 4) == 2, 'k=4 out=2 STRAIGHT')
         print *, '  test_dest_math OK'
     end subroutine test_dest_math
 
     !-----------------------------------------------------------------
     ! 2. Single vehicle moves with no contention.
+    !    Leg 1 -> out=3 (STRAIGHT); holding clears, road 3 site 1 filled.
     !-----------------------------------------------------------------
     subroutine test_single_move()
         type(road_network_t) :: net
         call fresh(net)
-        call plant(net, 1, V_STRAIGHT)
+        call plant(net, 1)
+        call force_route(net, 1, 1, 3)   ! leg 1 STRAIGHT -> outbound 3
         call snapshot_network(net)
         call evaluate_junctions(net)
 
         call assert(holding_cell(net, 1) == V_EMPTY,    'holding 1 not cleared')
-        call assert(dest_cell(net, 3)    == V_STRAIGHT, 'road 3 site 1 not filled')
+        call assert(dest_cell(net, 3)    == V_OCCUPIED, 'road 3 site 1 not filled')
 
         call free_network(net)
         print *, '  test_single_move OK'
@@ -142,36 +137,39 @@ contains
     subroutine test_physical_block()
         type(road_network_t) :: net
         call fresh(net)
-        call plant(net, 1, V_STRAIGHT)
-        net%roads(3)%lane(1)%cells(1) = V_STRAIGHT             ! pre-fill destination
+        call plant(net, 1)
+        call force_route(net, 1, 1, 3)
+        net%roads(3)%lane(1)%cells(1) = V_OCCUPIED   ! pre-fill destination
 
         call snapshot_network(net)
         call evaluate_junctions(net)
 
-        call assert(holding_cell(net, 1) == V_STRAIGHT, 'holding 1 should be unchanged')
-        call assert(dest_cell(net, 3)    == V_STRAIGHT, 'destination should be unchanged')
+        call assert(holding_cell(net, 1) == V_OCCUPIED, 'holding 1 should be unchanged')
+        call assert(dest_cell(net, 3)    == V_OCCUPIED, 'destination should be unchanged')
 
         call free_network(net)
         print *, '  test_physical_block OK'
     end subroutine test_physical_block
 
     !-----------------------------------------------------------------
-    ! 4. Yield to the right: legs 1 and 4 both straight.
-    !    From leg 1's perspective leg 4 is to its right -> 1 yields to 4.
-    !    They have different destinations (3 and 2) so 4 advances unhindered.
+    ! 4. Yield to the right: legs 1 and 4 both STRAIGHT.
+    !    Leg 4 is to leg 1's right -> leg 1 yields, leg 4 advances.
+    !    Destinations differ (leg 1->3, leg 4->2) so no same-dest conflict.
     !-----------------------------------------------------------------
     subroutine test_yield_right()
         type(road_network_t) :: net
         call fresh(net)
-        call plant(net, 1, V_STRAIGHT)
-        call plant(net, 4, V_STRAIGHT)
+        call plant(net, 1)
+        call plant(net, 4)
+        call force_route(net, 1, 1, 3)   ! leg 1 STRAIGHT -> outbound 3
+        call force_route(net, 1, 4, 2)   ! leg 4 STRAIGHT -> outbound 2
+
         call snapshot_network(net)
         call evaluate_junctions(net)
 
         call assert(holding_cell(net, 4) == V_EMPTY,    'leg 4 should advance')
-        call assert(dest_cell(net, 2)    == V_STRAIGHT, 'leg 4 -> road 2')
-
-        call assert(holding_cell(net, 1) == V_STRAIGHT, 'leg 1 must yield')
+        call assert(dest_cell(net, 2)    == V_OCCUPIED, 'leg 4 -> road 2')
+        call assert(holding_cell(net, 1) == V_OCCUPIED, 'leg 1 must yield')
         call assert(dest_cell(net, 3)    == V_EMPTY,    'leg 1 destination unchanged')
 
         call free_network(net)
@@ -179,22 +177,24 @@ contains
     end subroutine test_yield_right
 
     !-----------------------------------------------------------------
-    ! 5. Right-turn vs oncoming straight.
-    !    Leg 1 RIGHT, leg 3 STRAIGHT (oncoming).  Leg 1 must yield.
-    !    Destinations: leg 1 -> road 4, leg 3 -> road 1 (different).
+    ! 5. Right-turn vs oncoming straight (R2).
+    !    Leg 1 RIGHT (->out 4), leg 3 STRAIGHT (->out 1).
+    !    Leg 1 yields to oncoming leg 3; leg 3 advances.
     !-----------------------------------------------------------------
     subroutine test_right_turn_yields()
         type(road_network_t) :: net
         call fresh(net)
-        call plant(net, 1, V_RIGHT)
-        call plant(net, 3, V_STRAIGHT)
+        call plant(net, 1)
+        call plant(net, 3)
+        call force_route(net, 1, 1, 4)   ! leg 1 RIGHT  -> outbound 4
+        call force_route(net, 1, 3, 1)   ! leg 3 STRAIGHT -> outbound 1
+
         call snapshot_network(net)
         call evaluate_junctions(net)
 
         call assert(holding_cell(net, 3) == V_EMPTY,    'leg 3 should advance')
-        call assert(dest_cell(net, 1)    == V_STRAIGHT, 'leg 3 -> road 1')
-
-        call assert(holding_cell(net, 1) == V_RIGHT,    'leg 1 must yield to oncoming')
+        call assert(dest_cell(net, 1)    == V_OCCUPIED, 'leg 3 -> road 1')
+        call assert(holding_cell(net, 1) == V_OCCUPIED, 'leg 1 must yield to oncoming')
 
         call free_network(net)
         print *, '  test_right_turn_yields OK'
@@ -206,15 +206,18 @@ contains
     subroutine test_parallel_opposite_straight()
         type(road_network_t) :: net
         call fresh(net)
-        call plant(net, 1, V_STRAIGHT)
-        call plant(net, 3, V_STRAIGHT)
+        call plant(net, 1)
+        call plant(net, 3)
+        call force_route(net, 1, 1, 3)   ! leg 1 STRAIGHT -> outbound 3
+        call force_route(net, 1, 3, 1)   ! leg 3 STRAIGHT -> outbound 1
+
         call snapshot_network(net)
         call evaluate_junctions(net)
 
-        call assert(holding_cell(net, 1) == V_EMPTY, 'leg 1 should advance')
-        call assert(holding_cell(net, 3) == V_EMPTY, 'leg 3 should advance')
-        call assert(dest_cell(net, 3)    == V_STRAIGHT, 'leg 1 -> road 3')
-        call assert(dest_cell(net, 1)    == V_STRAIGHT, 'leg 3 -> road 1')
+        call assert(holding_cell(net, 1) == V_EMPTY,    'leg 1 should advance')
+        call assert(holding_cell(net, 3) == V_EMPTY,    'leg 3 should advance')
+        call assert(dest_cell(net, 3)    == V_OCCUPIED, 'leg 1 -> road 3')
+        call assert(dest_cell(net, 1)    == V_OCCUPIED, 'leg 3 -> road 1')
 
         call free_network(net)
         print *, '  test_parallel_opposite_straight OK'
@@ -222,20 +225,23 @@ contains
 
     !-----------------------------------------------------------------
     ! 7. Two left turns from opposite legs: paths don't cross, both move.
-    !    Leg 1 LEFT -> road 2; leg 3 LEFT -> road 4.
+    !    Leg 1 LEFT->2; leg 3 LEFT->4.
     !-----------------------------------------------------------------
     subroutine test_parallel_left_left()
         type(road_network_t) :: net
         call fresh(net)
-        call plant(net, 1, V_LEFT)
-        call plant(net, 3, V_LEFT)
+        call plant(net, 1)
+        call plant(net, 3)
+        call force_route(net, 1, 1, 2)   ! leg 1 LEFT -> outbound 2
+        call force_route(net, 1, 3, 4)   ! leg 3 LEFT -> outbound 4
+
         call snapshot_network(net)
         call evaluate_junctions(net)
 
-        call assert(holding_cell(net, 1) == V_EMPTY, 'leg 1 should advance')
-        call assert(holding_cell(net, 3) == V_EMPTY, 'leg 3 should advance')
-        call assert(dest_cell(net, 2)    == V_LEFT,  'leg 1 -> road 2')
-        call assert(dest_cell(net, 4)    == V_LEFT,  'leg 3 -> road 4')
+        call assert(holding_cell(net, 1) == V_EMPTY,    'leg 1 should advance')
+        call assert(holding_cell(net, 3) == V_EMPTY,    'leg 3 should advance')
+        call assert(dest_cell(net, 2)    == V_OCCUPIED, 'leg 1 -> road 2')
+        call assert(dest_cell(net, 4)    == V_OCCUPIED, 'leg 3 -> road 4')
 
         call free_network(net)
         print *, '  test_parallel_left_left OK'
@@ -243,15 +249,17 @@ contains
 
     !-----------------------------------------------------------------
     ! 8. Mutual right turns from opposite legs: classic deadlock.
-    !    Both want to cut across each other: exactly one wins via the
-    !    stochastic tie-break.
+    !    Leg 1 RIGHT->4, leg 3 RIGHT->2.  Exactly one wins the tie-break.
     !-----------------------------------------------------------------
     subroutine test_mutual_right_deadlock()
         type(road_network_t) :: net
         integer :: n_moved
         call fresh(net)
-        call plant(net, 1, V_RIGHT)
-        call plant(net, 3, V_RIGHT)
+        call plant(net, 1)
+        call plant(net, 3)
+        call force_route(net, 1, 1, 4)   ! leg 1 RIGHT -> outbound 4
+        call force_route(net, 1, 3, 2)   ! leg 3 RIGHT -> outbound 2
+
         call snapshot_network(net)
         call evaluate_junctions(net)
 
@@ -266,16 +274,20 @@ contains
 
     !-----------------------------------------------------------------
     ! 9. Four-way symmetric standoff: every leg STRAIGHT, every leg
-    !    yields to its right.  Tie-break should release exactly one;
-    !    the others remain blocked.
+    !    yields to its right.  Tie-break releases exactly one.
     !-----------------------------------------------------------------
     subroutine test_4way_straight_deadlock()
         type(road_network_t) :: net
         integer :: n_moved, k
         call fresh(net)
         do k = 1, 4
-            call plant(net, k, V_STRAIGHT)
+            call plant(net, k)
         end do
+        call force_route(net, 1, 1, 3)   ! leg 1 STRAIGHT -> outbound 3
+        call force_route(net, 1, 2, 4)   ! leg 2 STRAIGHT -> outbound 4
+        call force_route(net, 1, 3, 1)   ! leg 3 STRAIGHT -> outbound 1
+        call force_route(net, 1, 4, 2)   ! leg 4 STRAIGHT -> outbound 2
+
         call snapshot_network(net)
         call evaluate_junctions(net)
 

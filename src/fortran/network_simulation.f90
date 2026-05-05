@@ -76,11 +76,8 @@ contains
                 if (net%roads(r)%lane(k)%open_in .and. &
                     net%roads(r)%lane(k)%old(1) == V_EMPTY) then
                     call random_number(rnd)
-                    if (rnd < net%roads(r)%lane(k)%alpha) then
-                        net%roads(r)%lane(k)%cells(1) = &
-                            sample_indicator(net%roads(r)%lane(k)%p_left, &
-                                             net%roads(r)%lane(k)%p_right)
-                    end if
+                    if (rnd < net%roads(r)%lane(k)%alpha) &
+                        net%roads(r)%lane(k)%cells(1) = V_OCCUPIED
                 end if
             end do
         end do

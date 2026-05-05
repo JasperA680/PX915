@@ -1,7 +1,8 @@
 program test_init_crossroad
     !--------------------------------------------------------------------
-    ! Phase 2 validation: build a crossroad via init_crossroad and verify
-    ! every structural invariant the rest of the pipeline relies on.
+    ! Phase 3 validation: build a crossroad via init_crossroad and verify
+    ! every structural invariant the rest of the pipeline relies on,
+    ! including in_routes probability distributions.
     !--------------------------------------------------------------------
     use vehicle_mod
     use road_network_mod
@@ -10,7 +11,7 @@ program test_init_crossroad
 
     integer, parameter :: L = 25
     type(road_network_t) :: net
-    integer :: r
+    integer :: r, left_idx, straight_idx, right_idx
 
     call init_crossroad(net, L, 0.4, 0.5, 0.25, 0.25)
 
@@ -55,9 +56,28 @@ program test_init_crossroad
 
     !---- lane_at_end helpers consistent with junction flat lists ------
     do r = 1, 4
-        ! All crossroad roads connect at end_1; verify lane_at_end agrees with flat lists.
         call assert(inbound_lane_at_end(net%roads(r), 1)  == net%junctions(1)%in_lane(r),  'in_lane vs lane_at_end')
         call assert(outbound_lane_at_end(net%roads(r), 1) == net%junctions(1)%out_lane(r), 'out_lane vs lane_at_end')
+    end do
+
+    !---- in_routes probability distributions --------------------------
+    ! For init_crossroad(p_left=0.25, p_right=0.25):
+    !   LEFT      = mod(k,   4)+1  prob = 0.25
+    !   STRAIGHT  = mod(k+1, 4)+1  prob = 0.50
+    !   RIGHT     = mod(k+2, 4)+1  prob = 0.25
+    !   UTURN     = k              prob = 0.00
+    call assert(allocated(net%junctions(1)%in_routes), 'in_routes not allocated')
+    call assert(size(net%junctions(1)%in_routes) == 4, 'in_routes wrong size')
+    do r = 1, 4
+        call assert(allocated(net%junctions(1)%in_routes(r)%prob),         'prob not allocated')
+        call assert(size(net%junctions(1)%in_routes(r)%prob) == 4,         'prob wrong size')
+        left_idx     = mod(r,   4) + 1
+        straight_idx = mod(r+1, 4) + 1
+        right_idx    = mod(r+2, 4) + 1
+        call assert(abs(net%junctions(1)%in_routes(r)%prob(left_idx)     - 0.25) < 1e-6, 'prob LEFT')
+        call assert(abs(net%junctions(1)%in_routes(r)%prob(straight_idx) - 0.50) < 1e-6, 'prob STRAIGHT')
+        call assert(abs(net%junctions(1)%in_routes(r)%prob(right_idx)    - 0.25) < 1e-6, 'prob RIGHT')
+        call assert(abs(net%junctions(1)%in_routes(r)%prob(r)            - 0.00) < 1e-6, 'prob UTURN=0')
     end do
 
     !---- Print connectivity for human eyeballing -----------------------

@@ -7,6 +7,14 @@ module network_init_mod
     ! (1=N, 2=E, 3=S, 4=W).  Every road connects to the junction at its
     ! end_a (end 1); end_b (end 2) is an open boundary with the supplied
     ! alpha (entry) and beta (exit) probabilities.
+    !
+    ! Routing: in_routes(k)%prob(m) is the probability that a vehicle
+    ! arriving on inbound leg k exits via outbound leg m.  Given p_left
+    ! and p_right the distribution is built as:
+    !   LEFT      = mod(k,   4)+1  prob = p_left
+    !   STRAIGHT  = mod(k+1, 4)+1  prob = 1 - p_left - p_right
+    !   RIGHT     = mod(k+2, 4)+1  prob = p_right
+    !   U-TURN    = k              prob = 0  (forbidden)
     !--------------------------------------------------------------------
     use vehicle_mod
     use road_network_mod
@@ -47,8 +55,6 @@ contains
             ! Inbound lane: site 1 sits at the open end_b -> open inflow with alpha.
             net%roads(i)%lane(2)%open_in  = .true.
             net%roads(i)%lane(2)%alpha    = alpha
-            net%roads(i)%lane(2)%p_left   = p_left
-            net%roads(i)%lane(2)%p_right  = p_right
 
             ! Outbound lane: site L sits at the open end_b -> open outflow with beta.
             net%roads(i)%lane(1)%open_out = .true.
@@ -57,6 +63,17 @@ contains
             ! Register this road's inbound/outbound lanes with the junction.
             net%junctions(1)%in_lane(i)  = inbound_lane_at_end(net%roads(i), 1)
             net%junctions(1)%out_lane(i) = outbound_lane_at_end(net%roads(i), 1)
+        end do
+
+        ! Build per-inbound-leg route probability distributions.
+        ! LEFT=mod(k,4)+1, STRAIGHT=mod(k+1,4)+1, RIGHT=mod(k+2,4)+1, UTURN=k (prob=0).
+        allocate(net%junctions(1)%in_routes(4))
+        do i = 1, 4
+            allocate(net%junctions(1)%in_routes(i)%prob(4))
+            net%junctions(1)%in_routes(i)%prob               = 0.0
+            net%junctions(1)%in_routes(i)%prob(mod(i,   4)+1) = p_left
+            net%junctions(1)%in_routes(i)%prob(mod(i+1, 4)+1) = 1.0 - p_left - p_right
+            net%junctions(1)%in_routes(i)%prob(mod(i+2, 4)+1) = p_right
         end do
     end subroutine init_crossroad
 
@@ -72,7 +89,7 @@ contains
 
     subroutine free_network(net)
         type(road_network_t), intent(inout) :: net
-        integer :: r, ln
+        integer :: r, ln, k
         if (allocated(net%roads)) then
             do r = 1, size(net%roads)
                 if (allocated(net%roads(r)%lane)) then
@@ -91,6 +108,13 @@ contains
                 if (allocated(net%junctions(r)%in_lane))  deallocate(net%junctions(r)%in_lane)
                 if (allocated(net%junctions(r)%out_road)) deallocate(net%junctions(r)%out_road)
                 if (allocated(net%junctions(r)%out_lane)) deallocate(net%junctions(r)%out_lane)
+                if (allocated(net%junctions(r)%in_routes)) then
+                    do k = 1, size(net%junctions(r)%in_routes)
+                        if (allocated(net%junctions(r)%in_routes(k)%prob)) &
+                            deallocate(net%junctions(r)%in_routes(k)%prob)
+                    end do
+                    deallocate(net%junctions(r)%in_routes)
+                end if
             end do
             deallocate(net%junctions)
         end if

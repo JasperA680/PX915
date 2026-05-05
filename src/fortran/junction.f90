@@ -6,30 +6,34 @@ module junction_mod
     !
     !   1. Physical block: never advance into an occupied destination cell.
     !   2. Yield to the right (R1): yield to the vehicle one step
-    !      counter-clockwise (index i-1 wrap), when paths cross.
-    !   3. Right-turn yields oncoming (R2): a V_RIGHT vehicle yields to
-    !      any V_STRAIGHT or V_LEFT vehicle from the opposite leg.
-    !   4. Opposite-leg conflict scan (R3): for remaining delta=2 path
-    !      crossings not resolved by R2 —
+    !      counter-clockwise (the CW-prev leg), when paths cross or when
+    !      both vehicles target the same outbound.
+    !   3. Right-turn yields oncoming (R2): a RIGHT-category vehicle yields
+    !      to any LEFT or STRAIGHT vehicle from the opposite leg.
+    !      (n_in == n_out == 4 only.)
+    !   4. Opposite-leg conflict scan (R3): remaining delta=2 crossings —
     !        (S, L) opposite: straight has priority, left yields (UK rule)
     !        (R, R) opposite: mutual yields -> stochastic deadlock break
+    !      (n_in == n_out == 4 only.)
     !   5. Parallel non-conflicting moves are allowed.
     !   6. Yield semantics: if you yield, you wait the FULL step regardless
     !      of whether your yield-target also moves this step.
     !   7. Symmetric standoff: stochastic tie-break selects one winner;
     !      remaining deadlocked candidates wait for the next timestep.
     !
-    ! Destination formula (pure modulo on clockwise leg index k, 1..N):
-    !   STRAIGHT  ->  mod(k + N/2 - 1, N) + 1
-    !   LEFT      ->  mod(k,           N) + 1   (next clockwise; UK easy turn)
-    !   RIGHT     ->  mod(k + N - 2,   N) + 1   (prev clockwise; cuts across)
+    ! Move categories (derived from inbound and outbound leg indices):
+    !   0 = UTURN    d = 0
+    !   1 = LEFT     d = 1  (CW-next; UK easy turn)
+    !   2 = STRAIGHT d = n/2
+    !   3 = RIGHT    d = n-1 (CW-prev; cuts across)
+    !  where d = modulo(out_idx - in_idx, n).
     !--------------------------------------------------------------------
     use vehicle_mod
     use road_network_mod
     implicit none
     private
 
-    public :: evaluate_junctions, compute_destination, paths_conflict
+    public :: evaluate_junctions, move_category
 
 contains
 
@@ -48,10 +52,11 @@ contains
 
         integer, parameter :: MAX_LEGS = 4
 
-        integer :: N, k, src_road, src_lane, L_src
-        integer :: dst_road(MAX_LEGS), dst_lane(MAX_LEGS), dst_end_dummy
+        integer :: N, k, m, src_road, src_lane, L_src
+        integer :: dst_road(MAX_LEGS), dst_lane(MAX_LEGS), dst_idx(MAX_LEGS)
         integer :: holding(MAX_LEGS)
         logical :: phys_clear(MAX_LEGS), yields_to(MAX_LEGS, MAX_LEGS), approved(MAX_LEGS)
+        real    :: r, cumsum
 
         N = net%junctions(jid)%n_in
         if (N > MAX_LEGS) then
@@ -62,6 +67,7 @@ contains
         holding    = V_EMPTY
         dst_road   = 0
         dst_lane   = 0
+        dst_idx    = 0
         phys_clear = .false.
         yields_to  = .false.
         approved   = .false.
@@ -74,11 +80,21 @@ contains
             holding(k) = net%roads(src_road)%lane(src_lane)%old(L_src)
         end do
 
-        ! 2. Resolve destinations via intent code + outbound flat list.
+        ! 2. Sample destination from in_routes for each occupied leg.
         do k = 1, N
             if (holding(k) == V_EMPTY) cycle
-            call compute_destination(net%junctions(jid), k, holding(k), &
-                                     dst_road(k), dst_lane(k), dst_end_dummy)
+            call random_number(r)
+            cumsum    = 0.0
+            dst_idx(k) = net%junctions(jid)%n_out   ! fallback: last outbound
+            do m = 1, net%junctions(jid)%n_out
+                cumsum = cumsum + net%junctions(jid)%in_routes(k)%prob(m)
+                if (r < cumsum) then
+                    dst_idx(k) = m
+                    exit
+                end if
+            end do
+            dst_road(k) = net%junctions(jid)%out_road(dst_idx(k))
+            dst_lane(k) = net%junctions(jid)%out_lane(dst_idx(k))
         end do
 
         ! 3. Physical-clear check (destination site 1 in the old snapshot).
@@ -88,7 +104,7 @@ contains
         end do
 
         ! 4. Build yield matrix (rules R1, R2, R3).
-        call build_yield_matrix(net%junctions(jid), holding, yields_to)
+        call build_yield_matrix_v2(net%junctions(jid), holding, dst_idx, yields_to)
 
         ! 5. First approval pass.
         call approve_pass(holding, phys_clear, yields_to, approved)
@@ -102,46 +118,53 @@ contains
             src_road = net%junctions(jid)%in_road(k)
             src_lane = net%junctions(jid)%in_lane(k)
             L_src    = net%roads(src_road)%lane(src_lane)%length
-            net%roads(dst_road(k))%lane(dst_lane(k))%cells(1) = holding(k)
+            net%roads(dst_road(k))%lane(dst_lane(k))%cells(1) = V_OCCUPIED
             net%roads(src_road)%lane(src_lane)%cells(L_src)   = V_EMPTY
         end do
     end subroutine evaluate_one_junction
 
     !-----------------------------------------------------------------
-    ! Destination resolution: pure modulo arithmetic on clockwise index.
+    ! Move category: derived purely from inbound index, outbound index,
+    ! and junction size.  No cell-level intent code needed.
     !-----------------------------------------------------------------
-    pure subroutine compute_destination(jn, k, intent_code, dst_road, dst_lane, dst_end)
-        type(junction_t), intent(in)  :: jn
-        integer,          intent(in)  :: k, intent_code
-        integer,          intent(out) :: dst_road, dst_lane, dst_end
-        integer :: dst_out_idx
+    pure function move_category(in_idx, out_idx, n) result(cat)
+        integer, intent(in) :: in_idx, out_idx, n
+        integer :: cat, d
+        d = modulo(out_idx - in_idx, n)
+        if      (d == 0)                    then; cat = 0   ! UTURN
+        else if (d == 1)                    then; cat = 1   ! LEFT  (CW-next)
+        else if (n >= 4 .and. d == n/2)     then; cat = 2   ! STRAIGHT
+        else if (d == n - 1)                then; cat = 3   ! RIGHT (CW-prev)
+        else                                    ; cat = -1
+        end if
+    end function move_category
 
-        ! Map intent to outbound index using the same clockwise modulo arithmetic.
-        ! n_in == n_out for symmetric junctions; outbound ordering matches inbound.
-        select case (intent_code)
-        case (V_STRAIGHT)
-            dst_out_idx = mod(k + jn%n_in/2 - 1, jn%n_in) + 1
-        case (V_LEFT)
-            dst_out_idx = mod(k,                  jn%n_in) + 1
-        case (V_RIGHT)
-            dst_out_idx = mod(k + jn%n_in - 2,   jn%n_in) + 1
-        case default
-            dst_out_idx = k   ! invalid intent: self-loop, physical block will stop it
+    !-----------------------------------------------------------------
+    ! Path-conflict predicate for symmetric (n_in == n_out) layouts.
+    ! Returns .false. for n /= 4 (R2/R3 conditions gate on n==4 anyway).
+    !-----------------------------------------------------------------
+    pure function paths_conflict_sym(n, cat_i, cat_j, delta) result(c)
+        integer, intent(in) :: n, cat_i, cat_j, delta
+        logical :: c
+        c = .false.
+        if (n /= 4) return
+        select case (delta)
+        case (1, 3)   ! adjacent leg
+            c = .not. (cat_i == 1 .and. cat_j == 1)   ! conflict unless both LEFT
+        case (2)      ! opposite leg
+            c = .not. (cat_i == 2 .and. cat_j == 2) &
+                .and. .not. (cat_i == 1 .and. cat_j == 1)
         end select
-
-        dst_road = jn%out_road(dst_out_idx)
-        dst_lane = jn%out_lane(dst_out_idx)
-        dst_end  = 0   ! no longer meaningful; retained for interface compatibility
-    end subroutine compute_destination
+    end function paths_conflict_sym
 
     !-----------------------------------------------------------------
-    ! Yield matrix construction.
+    ! Yield matrix construction (category-based, Phase 3+).
     !-----------------------------------------------------------------
-    subroutine build_yield_matrix(jn, holding, yields_to)
+    subroutine build_yield_matrix_v2(jn, holding, dst_idx, yields_to)
         type(junction_t), intent(in)  :: jn
-        integer,          intent(in)  :: holding(:)
+        integer,          intent(in)  :: holding(:), dst_idx(:)
         logical,          intent(out) :: yields_to(:,:)
-        integer :: N, i, right_of_i, opp
+        integer :: N, i, right_of_i, opp, cat_i, cat_opp, cat_right
 
         N = jn%n_in
         yields_to = .false.
@@ -149,74 +172,52 @@ contains
         do i = 1, N
             if (holding(i) == V_EMPTY) cycle
 
-            right_of_i = mod(i + N - 2, N) + 1                 ! clockwise previous (delta=3 from i)
+            cat_i      = move_category(i, dst_idx(i), N)
+            right_of_i = mod(i + N - 2, N) + 1
 
-            ! R1 — yield to the right when paths conflict.
-            if (holding(right_of_i) /= V_EMPTY .and. &
-                paths_conflict(N, holding(i), holding(right_of_i), 3)) then
-                yields_to(i, right_of_i) = .true.
+            ! R1 — yield to the right when paths conflict or same destination.
+            if (holding(right_of_i) /= V_EMPTY) then
+                cat_right = move_category(right_of_i, dst_idx(right_of_i), N)
+                if (paths_conflict_sym(N, cat_i, cat_right, 3) .or. &
+                    dst_idx(i) == dst_idx(right_of_i)) then
+                    yields_to(i, right_of_i) = .true.
+                end if
             end if
 
-            ! R2 — right-turn yields to oncoming straight or left.
-            if (N == 4 .and. holding(i) == V_RIGHT) then
-                opp = mod(i + 1, N) + 1                         ! opposite leg (delta=2, N=4)
-                if (holding(opp) == V_STRAIGHT .or. holding(opp) == V_LEFT) then
-                    yields_to(i, opp) = .true.
+            ! R2 — right-turn yields to oncoming straight or left (4-way only).
+            if (N == 4 .and. jn%n_out == 4 .and. cat_i == 3) then
+                opp = mod(i + 1, N) + 1
+                if (holding(opp) /= V_EMPTY) then
+                    cat_opp = move_category(opp, dst_idx(opp), N)
+                    if (cat_opp == 1 .or. cat_opp == 2) yields_to(i, opp) = .true.
                 end if
             end if
         end do
 
-        ! R3 — scan remaining delta=2 path crossings not resolved by R2.
-        ! For N=4 only; T-junctions (N=3) have no opposite leg.
-        if (N == 4) then
+        ! R3 — remaining delta=2 crossings not already resolved by R2 (4-way only).
+        if (N == 4 .and. jn%n_out == 4) then
             do i = 1, N
                 if (holding(i) == V_EMPTY) cycle
                 opp = mod(i + 1, N) + 1
                 if (holding(opp) == V_EMPTY) cycle
-                if (.not. paths_conflict(N, holding(i), holding(opp), 2)) cycle
+                cat_i   = move_category(i,   dst_idx(i),   N)
+                cat_opp = move_category(opp, dst_idx(opp), N)
+                if (.not. (paths_conflict_sym(N, cat_i, cat_opp, 2) .or. &
+                           dst_idx(i) == dst_idx(opp))) cycle
                 if (yields_to(i, opp) .or. yields_to(opp, i)) cycle   ! already resolved
 
-                select case (holding(i) * 4 + holding(opp))         ! encode (ti, tj) pair
-                case (V_STRAIGHT*4 + V_LEFT)
-                    yields_to(opp, i) = .true.    ! UK: left yields to oncoming straight
-                case (V_LEFT*4 + V_STRAIGHT)
-                    yields_to(i, opp) = .true.    ! UK: left yields to oncoming straight
-                case default
-                    ! (R,R): mutual yields -> symmetric standoff, resolved by tie-break.
+                select case (cat_i * 4 + cat_opp)
+                case (2*4 + 1)   ! i=STRAIGHT, opp=LEFT: LEFT yields to STRAIGHT
+                    yields_to(opp, i) = .true.
+                case (1*4 + 2)   ! i=LEFT, opp=STRAIGHT: LEFT yields to STRAIGHT
+                    yields_to(i, opp) = .true.
+                case default     ! (R,R) and others: mutual yields -> deadlock
                     yields_to(i,   opp) = .true.
                     yields_to(opp, i  ) = .true.
                 end select
             end do
         end if
-    end subroutine build_yield_matrix
-
-    !-----------------------------------------------------------------
-    ! Path-crossing predicate for a 4-way junction.
-    ! delta = clockwise offset mod N from leg i to leg j.
-    ! UK convention: left turn is the easy swing; right turn cuts across.
-    !-----------------------------------------------------------------
-    pure function paths_conflict(N, ti, tj, delta) result(c)
-        integer, intent(in) :: N, ti, tj, delta
-        logical :: c
-
-        c = .false.
-        if (N /= 4) return
-
-        select case (delta)
-        case (1)        ! j is one step clockwise from i (to i's left)
-            c = .not. (ti == V_LEFT .and. tj == V_LEFT)
-        case (2)        ! j is opposite i
-            if      (ti == V_STRAIGHT .and. tj == V_STRAIGHT) then
-                c = .false.                        ! parallel through-traffic
-            else if (ti == V_LEFT     .and. tj == V_LEFT)     then
-                c = .false.                        ! both swing UK-left, no crossing
-            else
-                c = .true.                         ! all other opposite combinations cross
-            end if
-        case (3)        ! j is one step counter-clockwise from i (to i's right)
-            c = .not. (ti == V_LEFT .and. tj == V_LEFT)
-        end select
-    end function paths_conflict
+    end subroutine build_yield_matrix_v2
 
     !-----------------------------------------------------------------
     ! Approval pass.
