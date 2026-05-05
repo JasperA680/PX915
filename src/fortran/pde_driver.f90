@@ -29,6 +29,8 @@ program pde_driver
   params%domain_length = 1.0
   params%C_checkpoint  = 100
   params%use_adaptive_dt = .true.
+  params%n_sponge      = 10
+  params%sponge_damping  = 5.0 * params%v_max / params%domain_length
   output_file = 'data/output/pde_simulation.nc'
 
   ! ---------- command-line overrides ----------
