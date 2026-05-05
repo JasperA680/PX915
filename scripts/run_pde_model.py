@@ -80,7 +80,7 @@ def main():
                         choices=['lf', 'godunov'],
                         help='Numerical flux scheme (default: lf)')
     parser.add_argument('--bc', default='open',
-                        choices=['open', 'periodic'],
+                        choices=['open', 'periodic', 'sponge'],
                         help='Boundary condition type (default: open)')
     parser.add_argument('--rho-left', type=float, default=None,
                         help='Left BC / left Riemann state (default: 0.1, or preset value)')
