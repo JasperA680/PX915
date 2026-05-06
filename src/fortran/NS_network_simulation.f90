@@ -53,7 +53,7 @@ contains
         type(road_network_t), intent(inout) :: net
         integer :: r, k, L, i_site, j, gap, v, new_pos
         real    :: rnd, turn_random
-        logical :: exit_now
+        logical :: exit_now, junc_moved_L
         type(cell), allocatable :: updated(:)
 
         do r = 1, size(net%roads)
@@ -61,6 +61,12 @@ contains
                 L = net%roads(r)%lane(k)%length
                 allocate(updated(L))
                 updated = net%roads(r)%lane(k)%cells
+
+                ! Detect whether the junction already moved the holding-cell vehicle out.
+                ! If so, the lane step must not re-place it as a phantom.
+                junc_moved_L = (net%roads(r)%lane(k)%old(L)%has_car .and. &
+                                .not. net%roads(r)%lane(k)%cells(L)%has_car .and. &
+                                .not. net%roads(r)%lane(k)%open_out)
 
                 ! Clear positions that were occupied at the start of the step.
                 do i_site = 1, L
@@ -74,6 +80,8 @@ contains
                 ! Move cars using old state so the update is strictly parallel.
                 do i_site = 1, L
                     if (.not. net%roads(r)%lane(k)%old(i_site)%has_car) cycle
+                    ! Skip the holding cell when the junction already moved this vehicle.
+                    if (i_site == L .and. junc_moved_L) cycle
 
                     exit_now = .false.
                     if (net%roads(r)%lane(k)%open_out .and. i_site == L) then
