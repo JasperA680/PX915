@@ -65,11 +65,7 @@ contains
 
                 ! Bulk hops: use old state so the update is strictly parallel.
                 do i_site = L-1, 1, -1
-                    if (net%roads(r)%lane(k)%old(i_site)   /= V_EMPTY .and. &
-                        net%roads(r)%lane(k)%old(i_site+1) == V_EMPTY) then
-                        net%roads(r)%lane(k)%cells(i_site+1) = net%roads(r)%lane(k)%old(i_site)
-                        net%roads(r)%lane(k)%cells(i_site)   = V_EMPTY
-                    end if
+                    
                 end do
 
                 ! Open inflow at site 1 (only if site 1 was empty at step start).
@@ -87,7 +83,6 @@ contains
                         else
                             net%roads(r)%lane(k)%cells(1)%turning_intent = 1  ! = Straight
                         end if
-                        net%roads(r)%lane(k)%cells(1)%velocity = 0    ! Sets v=0 for new car
                     end if
                 end if
             end do

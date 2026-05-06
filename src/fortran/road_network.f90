@@ -17,15 +17,20 @@ module road_network_mod
     ! In both cases site 1 is the entry end, site L is the holding cell
     ! toward whichever junction the lane flows into.
     !--------------------------------------------------------------------
-    use vehicle_mod
     implicit none
     private
+
+    type, public :: cell
+        integer :: velocity = 0
+        integer :: turning_intent = 0   ! 0 is no assigned intent, 1,2,3 indicates turning direction
+        logical :: has_car = .false.    ! Initialises cells to be empty
+    end type cell
 
     type, public :: lane_t
         integer :: length         = 0
         integer :: flow_direction = 0     ! +1: end_1->end_2,  -1: end_2->end_1
-        integer, allocatable :: cells(:)
-        integer, allocatable :: old(:)    ! parallel-update snapshot
+        type(cell), allocatable :: cells(:)
+        type(cell), allocatable :: old(:)    ! parallel-update snapshot
         real    :: alpha   = 0.0
         real    :: beta    = 0.0
         logical :: open_in  = .false.     ! site 1 is open inflow
@@ -125,7 +130,9 @@ contains
         do r = 1, size(net%roads)
             do l = 1, size(net%roads(r)%lane)
                 do k = 1, net%roads(r)%lane(l)%length
-                    if (is_occupied(net%roads(r)%lane(l)%cells(k))) n = n + 1
+                    if (net%roads(r)%lane(l)%cells(k)%has_car) then
+                        n = n + 1
+                    end if
                 end do
             end do
         end do

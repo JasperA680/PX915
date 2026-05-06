@@ -61,14 +61,14 @@ program test_network_run
         step_exits   = 0
         do r = 1, 4
             ! Entry: new vehicle appeared at inbound lane (lane 2) site 1.
-            if (net%roads(r)%lane(2)%cells(1) /= V_EMPTY .and. &
-                net%roads(r)%lane(2)%old(1)   == V_EMPTY) then
+            if (net%roads(r)%lane(2)%cells(1)%has_car .and. &
+                .not. net%roads(r)%lane(2)%old(1)%has_car) then
                 step_entries        = step_entries + 1
                 cum_entries(r) = cum_entries(r) + 1
             end if
             ! Exit: vehicle disappeared from outbound lane (lane 1) site L.
-            if (net%roads(r)%lane(1)%cells(net%roads(r)%lane(1)%length) == V_EMPTY .and. &
-                net%roads(r)%lane(1)%old(net%roads(r)%lane(1)%length)   /= V_EMPTY) then
+            if (.not. net%roads(r)%lane(1)%cells(net%roads(r)%lane(1)%length)%has_car .and. &
+                net%roads(r)%lane(1)%old(net%roads(r)%lane(1)%length)%has_car) then
                 step_exits        = step_exits + 1
                 cum_exits(r) = cum_exits(r) + 1
             end if
