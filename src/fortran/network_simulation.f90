@@ -22,6 +22,9 @@ module network_simulation_mod
     implicit none
     private
 
+    integer, parameter :: V_MAX  = 5
+    real,    parameter :: P_SLOW = 0.2
+
     public :: network_step, run_network
 
 contains
@@ -34,7 +37,7 @@ contains
     end subroutine network_step
 
 !-----------------------------------------------------------------
-    ! Per-lane TASEP step for the networked model.
+    ! Per-lane Nagel-Schreckenberg step for the networked model.
     !
     ! Inbound lane (junction at site L, open at site 1):
     !   * Bulk hops use old state; site L is NOT explicitly exited here
@@ -48,28 +51,55 @@ contains
     !-----------------------------------------------------------------
     subroutine lane_internal_step(net)
         type(road_network_t), intent(inout) :: net
-        integer :: r, k, L, i_site
+        integer :: r, k, L, i_site, j, gap, v, new_pos
         real    :: rnd
+        logical :: exit_now
+        type(cell), allocatable :: updated(:)
 
         do r = 1, size(net%roads)
             do k = 1, size(net%roads(r)%lane)
                 L = net%roads(r)%lane(k)%length
+                allocate(updated(L))
+                updated = net%roads(r)%lane(k)%cells
 
-                ! Open outflow at site L.
-                if (net%roads(r)%lane(k)%open_out .and. &
-                    net%roads(r)%lane(k)%old(L)%has_car) then
-                    call random_number(rnd)
-                    if (rnd < net%roads(r)%lane(k)%beta) &
-                        net%roads(r)%lane(k)%cells(L)%has_car = .false.
-                end if
-
-                ! Bulk hops: use old state so the update is strictly parallel.
-                do i_site = L-1, 1, -1
-                    if (net%roads(r)%lane(k)%old(i_site)   /= V_EMPTY .and. &
-                        net%roads(r)%lane(k)%old(i_site+1) == V_EMPTY) then
-                        net%roads(r)%lane(k)%cells(i_site+1) = net%roads(r)%lane(k)%old(i_site)
-                        net%roads(r)%lane(k)%cells(i_site)   = V_EMPTY
+                ! Clear positions that were occupied at the start of the step.
+                do i_site = 1, L
+                    if (net%roads(r)%lane(k)%old(i_site)%has_car) then
+                        updated(i_site)%has_car = .false.
+                        updated(i_site)%turning_intent = V_EMPTY
+                        updated(i_site)%velocity = 0
                     end if
+                end do
+
+                ! Move cars using old state so the update is strictly parallel.
+                do i_site = 1, L
+                    if (.not. net%roads(r)%lane(k)%old(i_site)%has_car) cycle
+
+                    exit_now = .false.
+                    if (net%roads(r)%lane(k)%open_out .and. i_site == L) then
+                        call random_number(rnd)
+                        if (rnd < net%roads(r)%lane(k)%beta) exit_now = .true.
+                    end if
+                    if (exit_now) cycle
+
+                    gap = L - i_site
+                    do j = i_site + 1, L
+                        if (net%roads(r)%lane(k)%old(j)%has_car) then
+                            gap = j - i_site - 1
+                            exit
+                        end if
+                    end do
+
+                    v = net%roads(r)%lane(k)%old(i_site)%velocity
+                    v = min(v + 1, V_MAX)
+                    v = min(v, gap)
+                    call random_number(rnd)
+                    if (rnd < P_SLOW .and. v > 0) v = v - 1
+
+                    new_pos = i_site + v
+                    updated(new_pos)%has_car = .true.
+                    updated(new_pos)%turning_intent = net%roads(r)%lane(k)%old(i_site)%turning_intent
+                    updated(new_pos)%velocity = v
                 end do
 
                 ! Open inflow at site 1 (only if site 1 was empty at step start).
@@ -77,19 +107,22 @@ contains
                     .not. net%roads(r)%lane(k)%old(1)%has_car) then
                     call random_number(rnd)
                     if (rnd < net%roads(r)%lane(k)%alpha) then
-                        call random_number(rnd)     ! reusing rnd, hopfully not an issue?
+                        call random_number(rnd)
                         if (rnd < net%roads(r)%lane(k)%p_left) then      
-                            net%roads(r)%lane(k)%cells(1)%turning_intent = 2  ! = Left
+                            updated(1)%turning_intent = V_LEFT
                         else if (rnd < net%roads(r)%lane(k)%p_left &
                             + net%roads(r)%lane(k)%p_right) then
-
-                            net%roads(r)%lane(k)%cells(1)%turning_intent = 3  ! = Right
+                            updated(1)%turning_intent = V_RIGHT
                         else
-                            net%roads(r)%lane(k)%cells(1)%turning_intent = 1  ! = Straight
+                            updated(1)%turning_intent = V_STRAIGHT
                         end if
-                        net%roads(r)%lane(k)%cells(1)%velocity = 0    ! Sets v=0 for new car
+                        updated(1)%has_car = .true.
+                        updated(1)%velocity = 0
                     end if
                 end if
+
+                net%roads(r)%lane(k)%cells = updated
+                deallocate(updated)
             end do
         end do
     end subroutine lane_internal_step

@@ -1,9 +1,9 @@
 module vehicle_mod
     !--------------------------------------------------------------------
-    ! Vehicle / cell state codes for the networked TASEP.
+    ! Vehicle turning-intent codes for the networked model.
     !
-    ! V_EMPTY = 0 (cell vacant); V_OCCUPIED = 1 (cell occupied).
-    ! Routing decisions live on the junction (in_routes), not the cell.
+    ! Occupancy is stored separately in cell%has_car; cell%turning_intent
+    ! uses these codes when a vehicle is present.
     !--------------------------------------------------------------------
     implicit none
     private

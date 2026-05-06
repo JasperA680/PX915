@@ -37,8 +37,12 @@ program test_types
             net%roads(r)%lane(ln)%length = L
             allocate(net%roads(r)%lane(ln)%cells(L))
             allocate(net%roads(r)%lane(ln)%old(L))
-            net%roads(r)%lane(ln)%cells = V_EMPTY
-            net%roads(r)%lane(ln)%old   = V_EMPTY
+            net%roads(r)%lane(ln)%cells%has_car = .false.
+            net%roads(r)%lane(ln)%cells%turning_intent = V_EMPTY
+            net%roads(r)%lane(ln)%cells%velocity = 0
+            net%roads(r)%lane(ln)%old%has_car   = .false.
+            net%roads(r)%lane(ln)%old%turning_intent = V_EMPTY
+            net%roads(r)%lane(ln)%old%velocity = 0
         end do
     end do
 

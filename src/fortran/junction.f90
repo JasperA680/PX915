@@ -123,7 +123,11 @@ contains
             src_lane = net%junctions(jid)%in_lane(k)
             L_src    = net%roads(src_road)%lane(src_lane)%length
             net%roads(dst_road(k))%lane(dst_lane(k))%cells(1)%has_car = .true.
+            net%roads(dst_road(k))%lane(dst_lane(k))%cells(1)%turning_intent = holding(k)
+            net%roads(dst_road(k))%lane(dst_lane(k))%cells(1)%velocity = 0
             net%roads(src_road)%lane(src_lane)%cells(L_src)%has_car   = .false.
+            net%roads(src_road)%lane(src_lane)%cells(L_src)%turning_intent = 0
+            net%roads(src_road)%lane(src_lane)%cells(L_src)%velocity = 0
         end do
     end subroutine evaluate_one_junction
 
