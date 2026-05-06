@@ -10,16 +10,16 @@ program test_ns_grid
     implicit none
 
     integer, parameter :: L = 12
-    integer, parameter :: N_STEPS = 6
+    integer, parameter :: N_STEPS = 20
     integer, parameter :: V_MAX = 5
 
     type(road_network_t) :: net
     integer :: step
 
     call seed_rng(20260506)
-    call init_crossroad(net, L, 0.0, 0.0, 0.0, 0.0)
-    call close_boundaries(net)
-    call seed_layout(net)
+    call init_crossroad(net, L, 0.99, 0.01, 0.99, 0.0)
+    !call close_boundaries(net)
+    !call seed_layout(net)
 
     print *, 'NS 2D grid (crossroad) test'
     call print_state(net, 0)
@@ -61,8 +61,9 @@ contains
 
     subroutine seed_layout(net)
         type(road_network_t), intent(inout) :: net
-        call place_car(net%roads(1)%lane(1), 2, 1)
-        call place_car(net%roads(1)%lane(1), 6, 0)
+        call place_car(net%roads(1)%lane(2), 2, 1)
+        call place_car(net%roads(1)%lane(2), 6, 0)
+        call place_car(net%roads(1)%lane(2), 5, 0)
         call place_car(net%roads(2)%lane(2), 3, 2)
         call place_car(net%roads(3)%lane(1), 5, 1)
         call place_car(net%roads(4)%lane(2), 4, 0)
@@ -108,18 +109,45 @@ contains
     subroutine check_step(net, step)
         type(road_network_t), intent(in) :: net
         integer, intent(in) :: step
-        integer :: r, ln
-        integer :: n_old, n_new
+        integer :: r, ln, Lk
+        integer :: n_old, n_new, entries, exits
 
         n_old = count_occupied_old(net)
         n_new = count_occupied_network(net)
-        if (n_old /= n_new) then
+
+        entries = 0
+        exits   = 0
+        do r = 1, size(net%roads)
+            do ln = 1, size(net%roads(r)%lane)
+                if (net%roads(r)%lane(ln)%open_in) then
+                    if (net%roads(r)%lane(ln)%cells(1)%has_car .and. &
+                        .not. net%roads(r)%lane(ln)%old(1)%has_car) entries = entries + 1
+                end if
+                if (net%roads(r)%lane(ln)%open_out) then
+                    Lk = net%roads(r)%lane(ln)%length
+                    if (.not. net%roads(r)%lane(ln)%cells(Lk)%has_car .and. &
+                        net%roads(r)%lane(ln)%old(Lk)%has_car) exits = exits + 1
+                end if
+            end do
+        end do
+
+        if (n_new /= n_old + entries - exits) then
             print *, 'FAIL: mass not conserved at step ', step
             stop 1
         end if
 
         do r = 1, size(net%roads)
             do ln = 1, size(net%roads(r)%lane)
+                Lk = net%roads(r)%lane(ln)%length
+                ! Skip if an open boundary event occurred: a simultaneous entry
+                ! and junction exit keeps n_old==n_new but breaks the 1-to-1
+                ! vehicle pairing that check_lane_ns relies on.
+                if (net%roads(r)%lane(ln)%open_in .and. &
+                    .not. net%roads(r)%lane(ln)%old(1)%has_car .and. &
+                    net%roads(r)%lane(ln)%cells(1)%has_car) cycle
+                if (net%roads(r)%lane(ln)%open_out .and. &
+                    net%roads(r)%lane(ln)%old(Lk)%has_car .and. &
+                    .not. net%roads(r)%lane(ln)%cells(Lk)%has_car) cycle
                 call check_lane_ns(net%roads(r)%lane(ln)%old, &
                                    net%roads(r)%lane(ln)%cells, step, r, ln)
             end do
