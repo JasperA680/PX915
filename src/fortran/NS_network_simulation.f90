@@ -22,8 +22,8 @@ module network_simulation_mod
     implicit none
     private
 
-    integer, parameter :: V_MAX  = 5
-    real,    parameter :: P_SLOW = 0.2
+    integer, parameter :: V_MAX  = 5     ! max velocity (cells per step)
+    real,    parameter :: P_SLOW = 0.2   ! random deceleration probability
 
     public :: network_step, run_network
 
