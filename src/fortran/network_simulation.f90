@@ -101,7 +101,8 @@ contains
                     call random_number(rnd)
                     if (rnd < P_SLOW .and. v > 0) v = v - 1
 
-                    new_pos = i_site + v
+                    new_pos = min(i_site + v, L)
+                    v = new_pos - i_site
                     updated(new_pos)%has_car = .true.
                     updated(new_pos)%turning_intent = net%roads(r)%lane(k)%old(i_site)%turning_intent
                     updated(new_pos)%velocity = v
@@ -109,7 +110,8 @@ contains
 
                 ! Open inflow at site 1 (only if site 1 was empty at step start).
                 if (net%roads(r)%lane(k)%open_in .and. &
-                    .not. net%roads(r)%lane(k)%old(1)%has_car) then
+                    .not. net%roads(r)%lane(k)%old(1)%has_car .and. &
+                    .not. updated(1)%has_car) then
                     call random_number(rnd)
                     if (rnd < net%roads(r)%lane(k)%alpha) then
                         call random_number(turn_random)
