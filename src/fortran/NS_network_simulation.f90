@@ -82,13 +82,17 @@ contains
                     end if
                     if (exit_now) cycle
 
-                    gap = L - i_site
-                    do j = i_site + 1, L
-                        if (net%roads(r)%lane(k)%old(j)%has_car) then
-                            gap = j - i_site - 1
-                            exit
-                        end if
-                    end do
+                    if (i_site == L) then
+                        gap = 0
+                    else
+                        gap = L - i_site
+                        do j = i_site + 1, L
+                            if (net%roads(r)%lane(k)%old(j)%has_car) then
+                                gap = j - i_site - 1
+                                exit
+                            end if
+                        end do
+                    end if
 
                     v = net%roads(r)%lane(k)%old(i_site)%velocity
                     v = min(v + 1, V_MAX)
