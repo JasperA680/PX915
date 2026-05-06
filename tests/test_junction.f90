@@ -55,14 +55,20 @@ contains
         ! Crossroad: lane(2) is always the inbound lane (flow_direction=-1).
         type(road_network_t), intent(inout) :: net
         integer, intent(in) :: leg, intent_code
-        net%roads(leg)%lane(2)%cells(L) = intent_code
+        net%roads(leg)%lane(2)%cells(L)%has_car = .true.
+        net%roads(leg)%lane(2)%cells(L)%turning_intent = intent_code
+        net%roads(leg)%lane(2)%cells(L)%velocity = 0
     end subroutine plant
 
     function holding_cell(net, leg) result(v)
         type(road_network_t), intent(in) :: net
         integer, intent(in) :: leg
         integer :: v
-        v = net%roads(leg)%lane(2)%cells(L)
+        if (net%roads(leg)%lane(2)%cells(L)%has_car) then
+            v = net%roads(leg)%lane(2)%cells(L)%turning_intent
+        else
+            v = V_EMPTY
+        end if
     end function holding_cell
 
     function dest_cell(net, leg) result(v)
@@ -70,7 +76,11 @@ contains
         type(road_network_t), intent(in) :: net
         integer, intent(in) :: leg
         integer :: v
-        v = net%roads(leg)%lane(1)%cells(1)
+        if (net%roads(leg)%lane(1)%cells(1)%has_car) then
+            v = net%roads(leg)%lane(1)%cells(1)%turning_intent
+        else
+            v = V_EMPTY
+        end if
     end function dest_cell
 
     subroutine assert(cond, msg)
@@ -143,7 +153,9 @@ contains
         type(road_network_t) :: net
         call fresh(net)
         call plant(net, 1, V_STRAIGHT)
-        net%roads(3)%lane(1)%cells(1) = V_STRAIGHT             ! pre-fill destination
+        net%roads(3)%lane(1)%cells(1)%has_car = .true.
+        net%roads(3)%lane(1)%cells(1)%turning_intent = V_STRAIGHT
+        net%roads(3)%lane(1)%cells(1)%velocity = 0
 
         call snapshot_network(net)
         call evaluate_junctions(net)

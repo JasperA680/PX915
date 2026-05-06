@@ -1,4 +1,5 @@
 module simulation 
+    use road_network_mod
     use tasep_model 
     implicit none 
     private 
@@ -31,7 +32,7 @@ contains
         integer, intent(out) :: current_history(n_steps)
         integer, intent(out) :: total_exits
 
-        integer :: state(L)
+        type(cell) :: state(L)
         integer :: step, exit_count
 
         ! start with an empty lattice
@@ -41,7 +42,7 @@ contains
         do step = 1, n_steps
             call tasep_step(state, L, alpha, beta, exit_count)
 
-            history(:, step) = state
+            history(:, step) = merge(1, 0, state%has_car)
             density_history(step) = compute_density(state, L)
             current_history(step) = exit_count
             total_exits = total_exits + exit_count
@@ -50,4 +51,3 @@ contains
     end subroutine run_simulation
 
 end module simulation
-

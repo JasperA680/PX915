@@ -1,10 +1,9 @@
 module vehicle_mod
     !--------------------------------------------------------------------
-    ! Vehicle / cell state codes for the networked TASEP.
+    ! Vehicle turning-intent codes for the networked model.
     !
-    ! A single integer per lattice cell encodes both occupancy and
-    ! turning intention.  V_EMPTY means the cell is empty; any other
-    ! code means the cell is occupied by a vehicle with that intention.
+    ! Occupancy is stored separately in cell%has_car; cell%turning_intent
+    ! uses these codes when a vehicle is present.
     !--------------------------------------------------------------------
     implicit none
     private

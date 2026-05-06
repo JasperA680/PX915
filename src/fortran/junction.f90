@@ -73,7 +73,11 @@ contains
             src_end  = net%junctions(jid)%end_at(k)
             src_lane = inbound_lane_at_end(net%roads(src_road), src_end)
             L_src    = net%roads(src_road)%lane(src_lane)%length
-            holding(k) = net%roads(src_road)%lane(src_lane)%old(L_src)%turning_intent
+            if (net%roads(src_road)%lane(src_lane)%old(L_src)%has_car) then
+                holding(k) = net%roads(src_road)%lane(src_lane)%old(L_src)%turning_intent
+            else
+                holding(k) = V_EMPTY
+            end if
         end do
 
         ! 2. Resolve destinations.
@@ -105,8 +109,12 @@ contains
             src_end  = net%junctions(jid)%end_at(k)
             src_lane = inbound_lane_at_end(net%roads(src_road), src_end)
             L_src    = net%roads(src_road)%lane(src_lane)%length
+            net%roads(dst_road(k))%lane(dst_lane(k))%cells(1)%has_car = .true.
             net%roads(dst_road(k))%lane(dst_lane(k))%cells(1)%turning_intent = holding(k)
+            net%roads(dst_road(k))%lane(dst_lane(k))%cells(1)%velocity = 0
             net%roads(src_road)%lane(src_lane)%cells(L_src)%has_car   = .false.
+            net%roads(src_road)%lane(src_lane)%cells(L_src)%turning_intent = V_EMPTY
+            net%roads(src_road)%lane(src_lane)%cells(L_src)%velocity = 0
         end do
     end subroutine evaluate_one_junction
 
