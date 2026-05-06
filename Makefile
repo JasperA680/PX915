@@ -29,14 +29,16 @@ NET_SIM_SRC      = $(SRC_DIR)/network_simulation.f90
 NETWORK_LIB_SRC = $(VEHICLE_SRC) $(NETWORK_SRC) $(NETWORK_INIT_SRC) $(JUNCTION_SRC) $(NET_SIM_SRC)
 
 # Executables
-TEST_EXE             = $(BUILD_DIR)/test_simulation
-TEST_TYPES_EXE       = $(BUILD_DIR)/test_types
-TEST_INIT_EXE        = $(BUILD_DIR)/test_init_crossroad
-TEST_JUNCTION_EXE    = $(BUILD_DIR)/test_junction
-TEST_NETWORK_RUN_EXE = $(BUILD_DIR)/test_network_run
+TEST_EXE              = $(BUILD_DIR)/test_simulation
+TEST_TYPES_EXE        = $(BUILD_DIR)/test_types
+TEST_INIT_EXE         = $(BUILD_DIR)/test_init_crossroad
+TEST_JUNCTION_EXE     = $(BUILD_DIR)/test_junction
+TEST_NETWORK_RUN_EXE  = $(BUILD_DIR)/test_network_run
+TEST_NS_GRID_EXE      = $(BUILD_DIR)/test_ns_grid
+TEST_NS_PERIODIC_EXE  = $(BUILD_DIR)/test_ns_periodic
 
 # Default target
-all: test test_types test_init_crossroad test_junction test_network_run test_t_junction
+all: test test_types test_init_crossroad test_junction test_network_run test_ns_grid test_ns_periodic
 
 # Build existing test program
 test: $(TEST_EXE)
@@ -93,17 +95,25 @@ $(TEST_NETWORK_RUN_EXE): $(NETWORK_LIB_SRC) tests/test_network_run.f90
 run_test_network_run: test_network_run
 	./$(TEST_NETWORK_RUN_EXE)
 
-# Phase 4 T-junction test
-TEST_T_JUNCTION_EXE = $(BUILD_DIR)/test_t_junction
+# NS 2D grid test
+test_ns_grid: $(TEST_NS_GRID_EXE)
 
-test_t_junction: $(TEST_T_JUNCTION_EXE)
-
-$(TEST_T_JUNCTION_EXE): $(NETWORK_LIB_SRC) tests/test_t_junction.f90
+$(TEST_NS_GRID_EXE): $(NETWORK_LIB_SRC) tests/test_ns_grid.f90
 	mkdir -p $(BUILD_DIR)
 	$(FC) $(FFLAGS) -J$(BUILD_DIR) $^ -o $@
 
-run_test_t_junction: test_t_junction
-	./$(TEST_T_JUNCTION_EXE)
+run_test_ns_grid: test_ns_grid
+	./$(TEST_NS_GRID_EXE)
+
+# NS periodic boundary test
+test_ns_periodic: $(TEST_NS_PERIODIC_EXE)
+
+$(TEST_NS_PERIODIC_EXE): $(VEHICLE_SRC) $(NETWORK_SRC) tests/test_ns_periodic.f90
+	mkdir -p $(BUILD_DIR)
+	$(FC) $(FFLAGS) -J$(BUILD_DIR) $^ -o $@
+
+run_test_ns_periodic: test_ns_periodic
+	./$(TEST_NS_PERIODIC_EXE)
 
 # Clean build files
 clean:
