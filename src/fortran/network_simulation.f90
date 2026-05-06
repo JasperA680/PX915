@@ -52,7 +52,7 @@ contains
     subroutine lane_internal_step(net)
         type(road_network_t), intent(inout) :: net
         integer :: r, k, L, i_site, j, gap, v, new_pos
-        real    :: rnd
+        real    :: rnd, turn_rnd
         logical :: exit_now
         type(cell), allocatable :: updated(:)
 
@@ -111,10 +111,10 @@ contains
                     .not. net%roads(r)%lane(k)%old(1)%has_car) then
                     call random_number(rnd)
                     if (rnd < net%roads(r)%lane(k)%alpha) then
-                        call random_number(rnd)
-                        if (rnd < net%roads(r)%lane(k)%p_left) then      
+                        call random_number(turn_rnd)
+                        if (turn_rnd < net%roads(r)%lane(k)%p_left) then      
                             updated(1)%turning_intent = V_LEFT
-                        else if (rnd < net%roads(r)%lane(k)%p_left &
+                        else if (turn_rnd < net%roads(r)%lane(k)%p_left &
                             + net%roads(r)%lane(k)%p_right) then
                             updated(1)%turning_intent = V_RIGHT
                         else
