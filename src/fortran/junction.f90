@@ -73,12 +73,12 @@ contains
             src_end  = net%junctions(jid)%end_at(k)
             src_lane = inbound_lane_at_end(net%roads(src_road), src_end)
             L_src    = net%roads(src_road)%lane(src_lane)%length
-            holding(k) = net%roads(src_road)%lane(src_lane)%old(L_src)
+            holding(k) = net%roads(src_road)%lane(src_lane)%old(L_src)%turning_intent
         end do
 
         ! 2. Resolve destinations.
         do k = 1, N
-            if (holding(k) == V_EMPTY) cycle
+            if (holding(k) == 0) cycle
             call compute_destination(net%junctions(jid), k, holding(k), &
                                      dst_road(k), dst_lane(k), dst_end_arr(k))
         end do
@@ -86,7 +86,7 @@ contains
         ! 3. Physical-clear check (destination site 1 in the old snapshot).
         do k = 1, N
             if (holding(k) == V_EMPTY) cycle
-            phys_clear(k) = (net%roads(dst_road(k))%lane(dst_lane(k))%old(1) == V_EMPTY)
+            phys_clear(k) = (.not. net%roads(dst_road(k))%lane(dst_lane(k))%old(1)%has_car)
         end do
 
         ! 4. Build yield matrix (rules R1, R2, R3).
@@ -105,8 +105,8 @@ contains
             src_end  = net%junctions(jid)%end_at(k)
             src_lane = inbound_lane_at_end(net%roads(src_road), src_end)
             L_src    = net%roads(src_road)%lane(src_lane)%length
-            net%roads(dst_road(k))%lane(dst_lane(k))%cells(1) = holding(k)
-            net%roads(src_road)%lane(src_lane)%cells(L_src)   = V_EMPTY
+            net%roads(dst_road(k))%lane(dst_lane(k))%cells(1)%turning_intent = holding(k)
+            net%roads(src_road)%lane(src_lane)%cells(L_src)%has_car   = .false.
         end do
     end subroutine evaluate_one_junction
 
