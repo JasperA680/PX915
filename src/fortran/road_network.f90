@@ -22,7 +22,6 @@ module road_network_mod
 
     type, public :: cell
         integer :: velocity = 0
-        integer :: turning_intent = 0   ! 0 is no assigned intent, 1,2,3 indicates turning direction
         logical :: has_car = .false.    ! Initialises cells to be empty
     end type cell
 

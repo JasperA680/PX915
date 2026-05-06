@@ -1,9 +1,8 @@
 module vehicle_mod
     !--------------------------------------------------------------------
-    ! Vehicle turning-intent codes for the networked model.
-    !
-    ! Occupancy is stored separately in cell%has_car; cell%turning_intent
-    ! uses these codes when a vehicle is present.
+    ! Vehicle occupancy codes for the networked model.
+    ! Occupancy is tracked by cell%has_car; V_EMPTY/V_OCCUPIED are used
+    ! by the junction holding-cell detection logic.
     !--------------------------------------------------------------------
     implicit none
     private

@@ -73,7 +73,6 @@ contains
         type(lane_t), intent(inout) :: ln
         integer, intent(in) :: pos, vel
         ln%cells(pos)%has_car = .true.
-        ln%cells(pos)%turning_intent = V_STRAIGHT
         ln%cells(pos)%velocity = vel
     end subroutine place_car
 

@@ -52,7 +52,7 @@ contains
     subroutine lane_internal_step(net)
         type(road_network_t), intent(inout) :: net
         integer :: r, k, L, i_site, j, gap, v, new_pos
-        real    :: rnd, turn_random
+        real    :: rnd
         logical :: exit_now, junc_moved_L
         type(cell), allocatable :: updated(:)
 
@@ -72,7 +72,6 @@ contains
                 do i_site = 1, L
                     if (net%roads(r)%lane(k)%old(i_site)%has_car) then
                         updated(i_site)%has_car = .false.
-                        updated(i_site)%turning_intent = V_EMPTY
                         updated(i_site)%velocity = 0
                     end if
                 end do
@@ -112,7 +111,6 @@ contains
                     new_pos = min(i_site + v, L)
                     v = new_pos - i_site
                     updated(new_pos)%has_car = .true.
-                    updated(new_pos)%turning_intent = net%roads(r)%lane(k)%old(i_site)%turning_intent
                     updated(new_pos)%velocity = v
                 end do
 
@@ -122,15 +120,6 @@ contains
                     .not. updated(1)%has_car) then
                     call random_number(rnd)
                     if (rnd < net%roads(r)%lane(k)%alpha) then
-                        call random_number(turn_random)
-                        if (turn_random < net%roads(r)%lane(k)%p_left) then      
-                            updated(1)%turning_intent = V_LEFT
-                        else if (turn_random < net%roads(r)%lane(k)%p_left &
-                            + net%roads(r)%lane(k)%p_right) then
-                            updated(1)%turning_intent = V_RIGHT
-                        else
-                            updated(1)%turning_intent = V_STRAIGHT
-                        end if
                         updated(1)%has_car = .true.
                         updated(1)%velocity = 0
                     end if

@@ -58,7 +58,6 @@ contains
         type(road_network_t), intent(inout) :: net
         integer, intent(in) :: leg
         net%roads(leg)%lane(2)%cells(L)%has_car = .true.
-        net%roads(leg)%lane(2)%cells(L)%turning_intent = 0
         net%roads(leg)%lane(2)%cells(L)%velocity = 0
     end subroutine plant
 
@@ -76,7 +75,7 @@ contains
         integer, intent(in) :: leg
         integer :: v
         if (net%roads(leg)%lane(2)%cells(L)%has_car) then
-            v = net%roads(leg)%lane(2)%cells(L)%turning_intent
+            v = V_OCCUPIED
         else
             v = V_EMPTY
         end if
@@ -88,7 +87,7 @@ contains
         integer, intent(in) :: leg
         integer :: v
         if (net%roads(leg)%lane(1)%cells(1)%has_car) then
-            v = net%roads(leg)%lane(1)%cells(1)%turning_intent
+            v = V_OCCUPIED
         else
             v = V_EMPTY
         end if
@@ -149,7 +148,7 @@ contains
         call fresh(net)
         call plant(net, 1)
         call force_route(net, 1, 1, 3)
-        net%roads(3)%lane(1)%cells(1) = V_OCCUPIED   ! pre-fill destination
+        net%roads(3)%lane(1)%cells(1)%has_car = .true.   ! pre-fill destination
 
         call snapshot_network(net)
         call evaluate_junctions(net)

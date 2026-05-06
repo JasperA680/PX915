@@ -3,7 +3,6 @@ program test_ns_periodic
     ! Single-road Nagel-Schreckenberg test with periodic boundaries.
     ! Prints a ring snapshot for visual inspection.
     !--------------------------------------------------------------------
-    use vehicle_mod
     use road_network_mod
     implicit none
 
@@ -46,7 +45,6 @@ contains
     subroutine init_ring(state)
         type(cell), intent(out) :: state(:)
         state%has_car = .false.
-        state%turning_intent = V_EMPTY
         state%velocity = 0
         call place_car(state, 3, 1)
         call place_car(state, 8, 2)
@@ -57,7 +55,6 @@ contains
         type(cell), intent(inout) :: state(:)
         integer, intent(in) :: pos, vel
         state(pos)%has_car = .true.
-        state(pos)%turning_intent = V_STRAIGHT
         state(pos)%velocity = vel
     end subroutine place_car
 
@@ -75,7 +72,6 @@ contains
         do i = 1, len
             if (old_state(i)%has_car) then
                 new_state(i)%has_car = .false.
-                new_state(i)%turning_intent = V_EMPTY
                 new_state(i)%velocity = 0
             end if
         end do
@@ -89,7 +85,6 @@ contains
             if (rnd < P_SLOW .and. v > 0) v = v - 1
             new_pos = 1 + mod(i - 1 + v, len)
             new_state(new_pos)%has_car = .true.
-            new_state(new_pos)%turning_intent = old_state(i)%turning_intent
             new_state(new_pos)%velocity = v
         end do
 

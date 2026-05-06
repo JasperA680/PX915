@@ -74,10 +74,14 @@ contains
 
         ! 1. Read holding cells from the old snapshot.
         do k = 1, N
-            src_road   = net%junctions(jid)%in_road(k)
-            src_lane   = net%junctions(jid)%in_lane(k)
-            L_src      = net%roads(src_road)%lane(src_lane)%length
-            holding(k) = net%roads(src_road)%lane(src_lane)%old(L_src)%turning_intent
+            src_road = net%junctions(jid)%in_road(k)
+            src_lane = net%junctions(jid)%in_lane(k)
+            L_src    = net%roads(src_road)%lane(src_lane)%length
+            if (net%roads(src_road)%lane(src_lane)%old(L_src)%has_car) then
+                holding(k) = V_OCCUPIED
+            else
+                holding(k) = V_EMPTY
+            end if
         end do
 
         ! 2. Sample destination from in_routes for each occupied leg.
@@ -123,10 +127,8 @@ contains
             src_lane = net%junctions(jid)%in_lane(k)
             L_src    = net%roads(src_road)%lane(src_lane)%length
             net%roads(dst_road(k))%lane(dst_lane(k))%cells(1)%has_car = .true.
-            net%roads(dst_road(k))%lane(dst_lane(k))%cells(1)%turning_intent = holding(k)
             net%roads(dst_road(k))%lane(dst_lane(k))%cells(1)%velocity = 0
             net%roads(src_road)%lane(src_lane)%cells(L_src)%has_car   = .false.
-            net%roads(src_road)%lane(src_lane)%cells(L_src)%turning_intent = 0
             net%roads(src_road)%lane(src_lane)%cells(L_src)%velocity = 0
         end do
     end subroutine evaluate_one_junction
