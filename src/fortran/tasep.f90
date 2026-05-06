@@ -1,4 +1,5 @@
 module tasep_model
+    use vehicle_mod
     use road_network_mod
 
     implicit none
@@ -28,12 +29,14 @@ module tasep_model
 
 contains 
 
-   subroutine initialise_lattice(state, L)
+    subroutine initialise_lattice(state, L)
         ! Initialise an empty lattice of length L
         integer, intent(in) :: L 
         type(cell), intent(out) :: state(L)
 
-        ! state%has_car = .false.  ! Set all cells to empty, should be done automatically i think?
+        state%has_car = .false.
+        state%turning_intent = V_EMPTY
+        state%velocity = 0
     end subroutine initialise_lattice
 
     subroutine tasep_step(state, L, alpha, beta, exit_count)
@@ -72,6 +75,8 @@ contains
             call random_number(r) 
             if (r < beta) then 
                 new_state(L)%has_car = .false.  
+                new_state(L)%turning_intent = V_EMPTY
+                new_state(L)%velocity = 0
                 exit_count = 1
             end if
         end if
@@ -81,7 +86,11 @@ contains
             if (old_state(i)%has_car .and. .not. old_state(i+1)%has_car) then 
                 ! Move particle right by one site
                 new_state(i)%has_car = .false.
+                new_state(i)%turning_intent = V_EMPTY
+                new_state(i)%velocity = 0
                 new_state(i+1)%has_car = .true.
+                new_state(i+1)%turning_intent = V_STRAIGHT
+                new_state(i+1)%velocity = 0
             end if   
         end do
 
@@ -90,6 +99,8 @@ contains
             call random_number(r)
             if (r < alpha) then 
                 new_state(1)%has_car = .true.
+                new_state(1)%turning_intent = V_STRAIGHT
+                new_state(1)%velocity = 0
             end if
         end if
 

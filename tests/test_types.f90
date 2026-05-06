@@ -40,8 +40,12 @@ program test_types
             net%roads(r)%lane(ln)%length = L
             allocate(net%roads(r)%lane(ln)%cells(L))
             allocate(net%roads(r)%lane(ln)%old(L))
-            net%roads(r)%lane(ln)%cells = V_EMPTY
-            net%roads(r)%lane(ln)%old   = V_EMPTY
+            net%roads(r)%lane(ln)%cells%has_car = .false.
+            net%roads(r)%lane(ln)%cells%turning_intent = V_EMPTY
+            net%roads(r)%lane(ln)%cells%velocity = 0
+            net%roads(r)%lane(ln)%old%has_car   = .false.
+            net%roads(r)%lane(ln)%old%turning_intent = V_EMPTY
+            net%roads(r)%lane(ln)%old%velocity = 0
         end do
     end do
 
@@ -62,14 +66,20 @@ program test_types
     !------ count_occupied_network on an empty network ------------------
     call assert(count_occupied_network(net) == 0, 'empty network not zero')
 
-    net%roads(1)%lane(2)%cells(L) = V_STRAIGHT
-    net%roads(3)%lane(2)%cells(L) = V_LEFT
+    net%roads(1)%lane(2)%cells(L)%has_car = .true.
+    net%roads(1)%lane(2)%cells(L)%turning_intent = V_STRAIGHT
+    net%roads(1)%lane(2)%cells(L)%velocity = 0
+    net%roads(3)%lane(2)%cells(L)%has_car = .true.
+    net%roads(3)%lane(2)%cells(L)%turning_intent = V_LEFT
+    net%roads(3)%lane(2)%cells(L)%velocity = 0
     call assert(count_occupied_network(net) == 2, 'two occupied not counted')
 
     !------ snapshot_network copies cells -> old ------------------------
     call snapshot_network(net)
-    call assert(net%roads(1)%lane(2)%old(L) == V_STRAIGHT, 'snapshot road 1')
-    call assert(net%roads(3)%lane(2)%old(L) == V_LEFT,     'snapshot road 3')
+    call assert(net%roads(1)%lane(2)%old(L)%has_car, 'snapshot road 1 occupied')
+    call assert(net%roads(1)%lane(2)%old(L)%turning_intent == V_STRAIGHT, 'snapshot road 1')
+    call assert(net%roads(3)%lane(2)%old(L)%has_car, 'snapshot road 3 occupied')
+    call assert(net%roads(3)%lane(2)%old(L)%turning_intent == V_LEFT,     'snapshot road 3')
 
     !------ sample_indicator distribution -------------------------------
     call random_seed(size = seed_size)
