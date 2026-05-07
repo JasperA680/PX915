@@ -3,9 +3,11 @@
 ! Usage (all positional, backward-compatible):
 !   pde_solver [M] [N_STEPS] [V_MAX] [RHO_MAX] [RHO_LEFT] [RHO_RIGHT]
 !              [IC_TYPE] [FLUX_TYPE] [BC_TYPE] [OUTPUT] [N_LANES] [LANE_CHANGE_RATE]
+!              [V_MAX_LANES] [RHO_MAX_LANES]
 !
-! Arguments 1-10 are identical to the single-lane driver.
-! Arguments 11-12 are new; omitting them gives n_lanes=1, k=0 (single-lane behaviour).
+! Arguments 1-12 identical to before.
+! Arg 13: comma-separated v_max per lane, e.g. "1.0,1.5"  (optional; scalar arg 3 broadcasts if omitted)
+! Arg 14: comma-separated rho_max per lane, e.g. "1.0,1.0" (optional)
 program pde_driver
   use pde_solver
   use pde_flux, only: q_of_rho
@@ -14,35 +16,33 @@ program pde_driver
   type(pde_state_t)  :: state
   type(pde_params_t) :: params
 
-  ! density_history(n_lanes, M, n_steps+1): lane-major Fortran storage
-  real, allocatable :: density_history(:,:,:)
-  ! flow_history(n_lanes, n_steps+1): right-boundary flow per lane
-  real, allocatable :: flow_history(:,:)
+  real, allocatable :: density_history(:,:,:)  ! (n_lanes, M, n_steps+1)
+  real, allocatable :: flow_history(:,:)        ! (n_lanes, n_steps+1)
 
   character(len=256) :: arg, output_file
-  integer :: t, lane
+  integer :: t, lane, n_found
 
   ! ---------- defaults ----------
-  params%M             = 200
-  params%n_steps       = 500
-  params%v_max         = 1.0
-  params%rho_max       = 1.0
-  params%rho_left_bc   = 0.1
-  params%rho_right_bc  = 0.9
-  params%ic_type       = 'riemann'
-  params%bc_type       = 'open'
-  params%flux_type     = 'lf'
-  params%cfl_number    = 0.9
-  params%domain_length = 1.0
-  params%C_checkpoint  = 100
+  params%M              = 200
+  params%n_steps        = 500
+  params%v_max          = 1.0
+  params%rho_max        = 1.0
+  params%rho_left_bc    = 0.1
+  params%rho_right_bc   = 0.9
+  params%ic_type        = 'riemann'
+  params%bc_type        = 'open'
+  params%flux_type      = 'lf'
+  params%cfl_number     = 0.9
+  params%domain_length  = 1.0
+  params%C_checkpoint   = 100
   params%use_adaptive_dt = .true.
-  params%n_sponge      = 10
-  params%sponge_damping  = 5.0 * params%v_max / params%domain_length
-  params%n_lanes         = 1
+  params%n_sponge       = 10
+  params%sponge_damping = 5.0 * params%v_max / params%domain_length
+  params%n_lanes        = 1
   params%lane_change_rate = 0.0
   output_file = 'data/output/pde_simulation.nc'
 
-  ! ---------- command-line overrides ----------
+  ! ---------- command-line overrides (args 1–12 unchanged) ----------
   if (command_argument_count() >= 1) then
     call get_command_argument(1, arg); read(arg, *) params%M
   end if
@@ -84,14 +84,44 @@ program pde_driver
   params%dx = params%domain_length / real(params%M)
   params%dt = params%cfl_number * params%dx / params%v_max
 
-  ! Broadcast scalar params into per-lane arrays
+  ! Broadcast scalars into per-lane arrays (allocates the arrays)
   call pde_setup_params(params)
+
+  ! ---------- per-lane overrides (args 13–14) ----------
+  ! Arg 13: comma-separated v_max list, e.g. "1.0,1.5"
+  if (command_argument_count() >= 13) then
+    call get_command_argument(13, arg)
+    call parse_real_list(trim(arg), params%v_max_lanes, n_found)
+    if (n_found /= params%n_lanes) then
+      write(*, '(A,I0,A,I0)') 'ERROR: v_max_lanes list length (', n_found, &
+        ') must equal n_lanes (', params%n_lanes, ')'
+      stop 1
+    end if
+    ! Recompute dt using global max v_max across lanes
+    params%dt = params%cfl_number * params%dx / maxval(params%v_max_lanes)
+  end if
+
+  ! Arg 14: comma-separated rho_max list
+  if (command_argument_count() >= 14) then
+    call get_command_argument(14, arg)
+    call parse_real_list(trim(arg), params%rho_max_lanes, n_found)
+    if (n_found /= params%n_lanes) then
+      write(*, '(A,I0,A,I0)') 'ERROR: rho_max_lanes list length (', n_found, &
+        ') must equal n_lanes (', params%n_lanes, ')'
+      stop 1
+    end if
+  end if
 
   write(*, '(A)')       '=== LWR PDE Solver (multi-lane) ======================'
   write(*, '(A,I0)')    'M                = ', params%M
   write(*, '(A,I0)')    'n_steps          = ', params%n_steps
   write(*, '(A,I0)')    'n_lanes          = ', params%n_lanes
-  write(*, '(A,F6.3)')  'v_max            = ', params%v_max
+  write(*, '(A,F6.3)')  'v_max (lane 1)   = ', params%v_max_lanes(1)
+  if (params%n_lanes > 1) then
+    do lane = 2, params%n_lanes
+      write(*, '(A,I0,A,F6.3)') 'v_max (lane ', lane, ')   = ', params%v_max_lanes(lane)
+    end do
+  end if
   write(*, '(A,F6.3)')  'rho_max          = ', params%rho_max
   write(*, '(A,F6.3)')  'rho_left_bc      = ', params%rho_left_bc
   write(*, '(A,F6.3)')  'rho_right_bc     = ', params%rho_right_bc
@@ -109,7 +139,6 @@ program pde_driver
   ! ---------- initialise ----------
   call pde_initialise(state, params)
 
-  ! Store initial condition (t=0)
   density_history(:, :, 1) = state%density
   do lane = 1, params%n_lanes
     flow_history(lane, 1) = q_of_rho(state%density(lane, params%M), &
@@ -134,8 +163,8 @@ program pde_driver
   end do
 
   if (state%clip_count > 0) then
-    write(*, '(A,I0,A)') 'WARNING: density was clamped in ', state%clip_count, &
-      ' cell-steps (lane-change source term too large; consider reducing k or dt).'
+    write(*, '(A,I0,A)') 'WARNING: density clamped in ', state%clip_count, &
+      ' cell-steps (consider reducing k or dt).'
   end if
 
   write(*, '(A,A)') 'Writing output to ', trim(output_file)
@@ -144,5 +173,37 @@ program pde_driver
 
   call pde_finalise(state)
   deallocate(density_history, flow_history)
+
+contains
+
+  ! Parse a comma-separated string of reals into an array.
+  ! e.g. "1.0,1.5,2.0" -> vals=[1.0, 1.5, 2.0], n_found=3
+  subroutine parse_real_list(str, vals, n_found)
+    character(len=*), intent(in)    :: str
+    real,             intent(inout) :: vals(:)
+    integer,          intent(out)   :: n_found
+
+    integer :: pos, sep, slen
+    character(len=64) :: token
+
+    n_found = 0
+    pos  = 1
+    slen = len_trim(str)
+
+    do while (pos <= slen)
+      sep = index(str(pos:slen), ',')
+      if (sep == 0) then
+        token = str(pos:slen)
+        pos   = slen + 1
+      else
+        token = str(pos : pos + sep - 2)
+        pos   = pos + sep
+      end if
+      if (len_trim(token) > 0) then
+        n_found = n_found + 1
+        if (n_found <= size(vals)) read(token, *) vals(n_found)
+      end if
+    end do
+  end subroutine parse_real_list
 
 end program pde_driver

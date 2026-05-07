@@ -132,6 +132,16 @@ contains
               * sin(2.0 * PI * x / params%domain_length)
         end do
 
+      ! Odd lanes start at rho_left_bc, even lanes at rho_right_bc.
+      ! Uses the scalar aliases so rho_left_bc and rho_right_bc set
+      ! different uniform densities in alternating lanes.
+      case ('staggered')
+        if (mod(lane, 2) == 1) then
+          state%density(lane, :) = params%rho_left_bc
+        else
+          state%density(lane, :) = params%rho_right_bc
+        end if
+
       case default
         state%density(lane, :) = params%rho_left_bc_lanes(lane)
 
@@ -335,6 +345,9 @@ contains
     call nc_check(nf90_put_att(ncid, NF90_GLOBAL, 'n_sponge',         params%n_sponge))
     call nc_check(nf90_put_att(ncid, NF90_GLOBAL, 'sponge_damping',   params%sponge_damping))
     call nc_check(nf90_put_att(ncid, NF90_GLOBAL, 'lane_change_rate', params%lane_change_rate))
+    ! Per-lane arrays stored as vector attributes so runs can be reproduced exactly
+    call nc_check(nf90_put_att(ncid, NF90_GLOBAL, 'v_max_lanes',   params%v_max_lanes))
+    call nc_check(nf90_put_att(ncid, NF90_GLOBAL, 'rho_max_lanes', params%rho_max_lanes))
 
     call nc_check(nf90_enddef(ncid))
 

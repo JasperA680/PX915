@@ -48,7 +48,13 @@ def run_pde(params: dict, output_path: Union[str, Path] = _DEFAULT_OUT,
     params:
         Dictionary with any subset of the solver keys:
         M, n_steps, v_max, rho_max, rho_left_bc, rho_right_bc,
-        ic_type, flux_type, bc_type, n_lanes, lane_change_rate.
+        ic_type, flux_type, bc_type, n_lanes, lane_change_rate,
+        v_max_lanes, rho_max_lanes.
+
+        v_max_lanes / rho_max_lanes accept either a scalar (broadcast
+        to all lanes, same as v_max / rho_max) or a list of length
+        n_lanes, e.g. ``v_max_lanes=[1.0, 1.5]``.  If not supplied,
+        the scalar v_max / rho_max is broadcast automatically.
     output_path:
         NetCDF file to write.
     exe:
@@ -59,8 +65,18 @@ def run_pde(params: dict, output_path: Union[str, Path] = _DEFAULT_OUT,
         rho_left_bc=0.1, rho_right_bc=0.9,
         ic_type="riemann", flux_type="lf", bc_type="open",
         n_lanes=1, lane_change_rate=0.0,
+        v_max_lanes=None, rho_max_lanes=None,
     )
     p = {**defaults, **params}
+
+    def _to_csv(val, n):
+        """Return comma-separated string for a scalar or list parameter."""
+        if val is None:
+            return None
+        if hasattr(val, '__len__'):
+            return ",".join(str(v) for v in val)
+        return ",".join(str(val) for _ in range(n))
+
     cmd = [
         str(exe),
         str(p["M"]),
@@ -76,6 +92,15 @@ def run_pde(params: dict, output_path: Union[str, Path] = _DEFAULT_OUT,
         str(p["n_lanes"]),
         str(p["lane_change_rate"]),
     ]
+
+    # Only append per-lane args if they differ from the broadcast scalar
+    v_csv   = _to_csv(p["v_max_lanes"],   p["n_lanes"])
+    rho_csv = _to_csv(p["rho_max_lanes"], p["n_lanes"])
+    if v_csv is not None:
+        cmd.append(v_csv)
+        if rho_csv is not None:
+            cmd.append(rho_csv)
+
     result = subprocess.run(cmd, capture_output=True, text=True)
     if result.returncode != 0:
         raise RuntimeError(

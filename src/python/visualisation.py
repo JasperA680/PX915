@@ -392,26 +392,28 @@ def plot_lane_densities(data, x_pos=0.5, ax=None, title=None):
 
 
 def plot_total_mass(data, ax=None, title=None):
-    """Total mass Σ_{lane,i} ρ_{lane,i}·Δx vs time.
+    """Mass deviation Δmass(t) = mass(t) − mass(0) vs time.
 
-    Should be flat for periodic BCs — visual conservation check.
+    Plotting the deviation from initial mass rather than the absolute value
+    avoids matplotlib's offset notation and makes conservation quality
+    immediately readable: a perfect simulation gives a flat line at zero.
     """
     from analysis import compute_total_mass
-    mass = compute_total_mass(data)
-    time = data["time"]
+    mass      = compute_total_mass(data)
+    deviation = mass - mass[0]
+    time      = data["time"]
 
     if ax is None:
         fig, ax = plt.subplots(figsize=(8, 3))
     else:
         fig = ax.figure
 
-    ax.plot(time, mass, color='steelblue', linewidth=1.2)
-    mean_mass = float(mass.mean())
-    variation  = float(mass.max() - mass.min())
-    ax.axhline(mean_mass, color='tomato', linestyle='--', linewidth=1,
-               label=f'mean = {mean_mass:.4f},  range = {variation:.2e}')
+    variation = float(deviation.max() - deviation.min())
+    ax.plot(time, deviation, color='steelblue', linewidth=1.2)
+    ax.axhline(0.0, color='tomato', linestyle='--', linewidth=1,
+               label=f'zero (initial mass = {float(mass[0]):.4f}),  range = {variation:.2e}')
     ax.set_xlabel('Time t')
-    ax.set_ylabel('Total mass')
-    ax.set_title(title or 'Total vehicle mass vs time  (conservation check)')
+    ax.set_ylabel('Δ Total mass')
+    ax.set_title(title or 'Mass conservation check  (deviation from initial mass)')
     ax.legend(fontsize=9)
     return fig, ax
