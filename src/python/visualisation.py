@@ -249,3 +249,169 @@ def plot_pde_summary(data, save_path=None):
         print(f'Saved to {save_path}')
 
     return fig
+
+
+def plot_pde_fundamental_diagram(rho, q, v_max=1.0, rho_max=1.0, ax=None, title=None):
+    """Flow q vs density ρ with the Greenshields analytical parabola overlaid.
+
+    Parameters
+    ----------
+    rho, q : array-like
+        Sweep points from ``pde_fundamental_diagram()``.
+    v_max, rho_max : float
+        Greenshields parameters for the analytical curve.
+    """
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(6, 5))
+    else:
+        fig = ax.figure
+
+    rho_theory = np.linspace(0, rho_max, 300)
+    q_theory = v_max * rho_theory * (1.0 - rho_theory / rho_max)
+    q_max = v_max * rho_max / 4.0
+    rho_c = rho_max / 2.0
+
+    ax.plot(rho_theory, q_theory, 'k--', linewidth=1.5,
+            label='q(ρ) = v·ρ(1−ρ/ρ_max)  [Greenshields]')
+    ax.scatter(rho, q, s=25, color='steelblue', alpha=0.9, zorder=3,
+               label='PDE sweep')
+    ax.axvline(rho_c, color='grey', linestyle=':', linewidth=1,
+               label=f'ρ_c = {rho_c:.2f}')
+    ax.axhline(q_max, color='grey', linestyle=':', linewidth=1,
+               label=f'q_max = {q_max:.3f}')
+    ax.set_xlabel('Density ρ')
+    ax.set_ylabel('Flow q')
+    ax.set_xlim(0, rho_max)
+    ax.set_ylim(0, q_max * 1.3)
+    ax.set_title(title or 'PDE fundamental diagram')
+    ax.legend(fontsize=9)
+    return fig, ax
+
+
+# ---------------------------------------------------------------------------
+# Multi-lane PDE visualisation
+# ---------------------------------------------------------------------------
+
+def plot_space_time_per_lane(data, fig=None, title=None):
+    """N stacked heatmaps of ρ_lane(x, t), one subplot per lane.
+
+    Parameters
+    ----------
+    data : dict returned by load_pde_netcdf
+    """
+    density_pl = data["density_per_lane"]   # (time, lane, x)
+    n_lanes    = density_pl.shape[1]
+    x          = data["x"]
+    time       = data["time"]
+    attrs      = data["attrs"]
+    rho_max    = float(attrs.get("rho_max", 1.0))
+
+    if fig is None:
+        fig, axes = plt.subplots(n_lanes, 1, figsize=(10, 3 * n_lanes),
+                                 sharex=True, sharey=True)
+        if n_lanes == 1:
+            axes = [axes]
+    else:
+        axes = fig.get_axes()
+
+    for lane_idx in range(n_lanes):
+        ax = axes[lane_idx]
+        im = ax.imshow(
+            density_pl[:, lane_idx, :],
+            aspect='auto', origin='lower', cmap='viridis',
+            vmin=0, vmax=rho_max,
+            extent=[float(x[0]), float(x[-1]), float(time[0]), float(time[-1])],
+        )
+        plt.colorbar(im, ax=ax, label='ρ')
+        ax.set_ylabel(f'Time t\n(lane {lane_idx + 1})')
+
+    axes[-1].set_xlabel('Position x')
+    fig.suptitle(title or 'Space-time density per lane', y=1.01)
+    fig.tight_layout()
+    return fig, axes
+
+
+def plot_space_time_total(data, ax=None, title=None):
+    """Heatmap of total density ρ_tot(x, t) = Σ_lane ρ_lane(x, t)."""
+    from analysis import compute_total_density
+    rho_tot = compute_total_density(data)   # (time, x)
+    x       = data["x"]
+    time    = data["time"]
+    attrs   = data["attrs"]
+    n_lanes = data["n_lanes"]
+    rho_max = float(attrs.get("rho_max", 1.0)) * n_lanes
+
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(10, 5))
+    else:
+        fig = ax.figure
+
+    im = ax.imshow(
+        rho_tot, aspect='auto', origin='lower', cmap='viridis',
+        vmin=0, vmax=rho_max,
+        extent=[float(x[0]), float(x[-1]), float(time[0]), float(time[-1])],
+    )
+    plt.colorbar(im, ax=ax, label='Total density ρ_tot')
+    ax.set_xlabel('Position x')
+    ax.set_ylabel('Time t')
+    ax.set_title(title or f'Total space-time density  ({n_lanes} lanes)')
+    return fig, ax
+
+
+def plot_lane_densities(data, x_pos=0.5, ax=None, title=None):
+    """Per-lane density vs time at a fixed spatial position x_pos.
+
+    Parameters
+    ----------
+    x_pos : float
+        Position along the road (in domain units). Nearest cell is used.
+    """
+    density_pl = data["density_per_lane"]   # (time, lane, x)
+    x          = data["x"]
+    time       = data["time"]
+    n_lanes    = data["n_lanes"]
+
+    i_cell = int(np.argmin(np.abs(x - x_pos)))
+
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(8, 4))
+    else:
+        fig = ax.figure
+
+    colors = plt.cm.tab10(np.linspace(0, 0.9, n_lanes))
+    for lane_idx in range(n_lanes):
+        ax.plot(time, density_pl[:, lane_idx, i_cell],
+                color=colors[lane_idx], linewidth=1.4,
+                label=f'Lane {lane_idx + 1}')
+
+    ax.set_xlabel('Time t')
+    ax.set_ylabel('Density ρ')
+    ax.set_title(title or f'Lane densities at x ≈ {float(x[i_cell]):.3f}')
+    ax.legend(fontsize=9)
+    return fig, ax
+
+
+def plot_total_mass(data, ax=None, title=None):
+    """Total mass Σ_{lane,i} ρ_{lane,i}·Δx vs time.
+
+    Should be flat for periodic BCs — visual conservation check.
+    """
+    from analysis import compute_total_mass
+    mass = compute_total_mass(data)
+    time = data["time"]
+
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(8, 3))
+    else:
+        fig = ax.figure
+
+    ax.plot(time, mass, color='steelblue', linewidth=1.2)
+    mean_mass = float(mass.mean())
+    variation  = float(mass.max() - mass.min())
+    ax.axhline(mean_mass, color='tomato', linestyle='--', linewidth=1,
+               label=f'mean = {mean_mass:.4f},  range = {variation:.2e}')
+    ax.set_xlabel('Time t')
+    ax.set_ylabel('Total mass')
+    ax.set_title(title or 'Total vehicle mass vs time  (conservation check)')
+    ax.legend(fontsize=9)
+    return fig, ax

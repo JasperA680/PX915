@@ -19,8 +19,9 @@ IO_SRC    = $(SRC_DIR)/io.f90
 TEST_SRC  = $(SRC_DIR)/test_simulation.f90
 FD_SRC    = $(SRC_DIR)/fundamental_diagram.f90
 
-# PDE source files
+# PDE source files (pde_flux and pde_lanechange must precede pde_module)
 PDE_FLUX_SRC = $(SRC_DIR)/pde_flux.f90
+PDE_LC_SRC   = $(SRC_DIR)/pde_lanechange.f90
 PDE_MOD_SRC  = $(SRC_DIR)/pde_module.f90
 PDE_DRV_SRC  = $(SRC_DIR)/pde_driver.f90
 
@@ -60,8 +61,8 @@ $(FUND_EXE): $(MODEL_SRC) $(SIM_SRC) $(IO_SRC) $(FD_SRC)
 	mkdir -p $(BUILD_DIR)
 	$(FC) $(FFLAGS) $^ -o $@ $(NC_FLIBS)
 
-# Build PDE solver (pde_flux must come before pde_module due to USE dependency)
-$(PDE_EXE): $(PDE_FLUX_SRC) $(PDE_MOD_SRC) $(PDE_DRV_SRC)
+# Build PDE solver (pde_flux + pde_lanechange before pde_module due to USE deps)
+$(PDE_EXE): $(PDE_FLUX_SRC) $(PDE_LC_SRC) $(PDE_MOD_SRC) $(PDE_DRV_SRC)
 	mkdir -p $(BUILD_DIR)
 	$(FC) $(FFLAGS) $^ -o $@ $(NC_FLIBS)
 
