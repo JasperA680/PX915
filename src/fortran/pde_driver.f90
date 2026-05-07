@@ -1,6 +1,11 @@
-! PDE solver driver.
-! Usage: pde_solver [M] [N_STEPS] [V_MAX] [RHO_MAX] [RHO_LEFT] [RHO_RIGHT] [IC_TYPE] [FLUX_TYPE] [OUTPUT]
-! Defaults: 200 500 1.0 1.0 0.1 0.9 riemann lf data/output/pde_simulation.nc
+! PDE solver driver — multi-lane extension.
+!
+! Usage (all positional, backward-compatible):
+!   pde_solver [M] [N_STEPS] [V_MAX] [RHO_MAX] [RHO_LEFT] [RHO_RIGHT]
+!              [IC_TYPE] [FLUX_TYPE] [BC_TYPE] [OUTPUT] [N_LANES] [LANE_CHANGE_RATE]
+!
+! Arguments 1-10 are identical to the single-lane driver.
+! Arguments 11-12 are new; omitting them gives n_lanes=1, k=0 (single-lane behaviour).
 program pde_driver
   use pde_solver
   use pde_flux, only: q_of_rho
@@ -9,11 +14,13 @@ program pde_driver
   type(pde_state_t)  :: state
   type(pde_params_t) :: params
 
-  real, allocatable :: density_history(:,:)  ! (M, n_steps+1)
-  real, allocatable :: flow_history(:)       ! (n_steps+1)
+  ! density_history(n_lanes, M, n_steps+1): lane-major Fortran storage
+  real, allocatable :: density_history(:,:,:)
+  ! flow_history(n_lanes, n_steps+1): right-boundary flow per lane
+  real, allocatable :: flow_history(:,:)
 
   character(len=256) :: arg, output_file
-  integer :: t
+  integer :: t, lane
 
   ! ---------- defaults ----------
   params%M             = 200
@@ -31,6 +38,8 @@ program pde_driver
   params%use_adaptive_dt = .true.
   params%n_sponge      = 10
   params%sponge_damping  = 5.0 * params%v_max / params%domain_length
+  params%n_lanes         = 1
+  params%lane_change_rate = 0.0
   output_file = 'data/output/pde_simulation.nc'
 
   ! ---------- command-line overrides ----------
@@ -64,48 +73,70 @@ program pde_driver
   if (command_argument_count() >= 10) then
     call get_command_argument(10, arg); output_file = trim(arg)
   end if
+  if (command_argument_count() >= 11) then
+    call get_command_argument(11, arg); read(arg, *) params%n_lanes
+  end if
+  if (command_argument_count() >= 12) then
+    call get_command_argument(12, arg); read(arg, *) params%lane_change_rate
+  end if
 
   ! ---------- derived parameters ----------
   params%dx = params%domain_length / real(params%M)
-  ! Initial dt from CFL (may be updated each step if use_adaptive_dt)
   params%dt = params%cfl_number * params%dx / params%v_max
 
-  write(*, '(A)')       '=== LWR PDE Solver ==================================='
-  write(*, '(A,I0)')    'M           = ', params%M
-  write(*, '(A,I0)')    'n_steps     = ', params%n_steps
-  write(*, '(A,F6.3)')  'v_max       = ', params%v_max
-  write(*, '(A,F6.3)')  'rho_max     = ', params%rho_max
-  write(*, '(A,F6.3)')  'rho_left_bc = ', params%rho_left_bc
-  write(*, '(A,F6.3)')  'rho_right_bc= ', params%rho_right_bc
-  write(*, '(A,A)')     'ic_type     = ', trim(params%ic_type)
-  write(*, '(A,A)')     'flux_type   = ', trim(params%flux_type)
-  write(*, '(A,A)')     'output      = ', trim(output_file)
+  ! Broadcast scalar params into per-lane arrays
+  call pde_setup_params(params)
+
+  write(*, '(A)')       '=== LWR PDE Solver (multi-lane) ======================'
+  write(*, '(A,I0)')    'M                = ', params%M
+  write(*, '(A,I0)')    'n_steps          = ', params%n_steps
+  write(*, '(A,I0)')    'n_lanes          = ', params%n_lanes
+  write(*, '(A,F6.3)')  'v_max            = ', params%v_max
+  write(*, '(A,F6.3)')  'rho_max          = ', params%rho_max
+  write(*, '(A,F6.3)')  'rho_left_bc      = ', params%rho_left_bc
+  write(*, '(A,F6.3)')  'rho_right_bc     = ', params%rho_right_bc
+  write(*, '(A,F6.3)')  'lane_change_rate = ', params%lane_change_rate
+  write(*, '(A,A)')     'ic_type          = ', trim(params%ic_type)
+  write(*, '(A,A)')     'flux_type        = ', trim(params%flux_type)
+  write(*, '(A,A)')     'bc_type          = ', trim(params%bc_type)
+  write(*, '(A,A)')     'output           = ', trim(output_file)
   write(*, '(A)')       '======================================================'
 
   ! ---------- allocate history ----------
-  allocate(density_history(params%M, params%n_steps + 1))
-  allocate(flow_history(params%n_steps + 1))
+  allocate(density_history(params%n_lanes, params%M, params%n_steps + 1))
+  allocate(flow_history(params%n_lanes, params%n_steps + 1))
 
   ! ---------- initialise ----------
   call pde_initialise(state, params)
 
   ! Store initial condition (t=0)
-  density_history(:, 1) = state%density
-  flow_history(1) = q_of_rho(state%density(params%M), params%v_max, params%rho_max)
+  density_history(:, :, 1) = state%density
+  do lane = 1, params%n_lanes
+    flow_history(lane, 1) = q_of_rho(state%density(lane, params%M), &
+                              params%v_max_lanes(lane), params%rho_max_lanes(lane))
+  end do
 
   ! ---------- time loop ----------
   do t = 1, params%n_steps
     if (params%use_adaptive_dt) call compute_dt(state, params, params%dt)
     call pde_step(state, params)
-    density_history(:, t + 1) = state%density
-    flow_history(t + 1) = q_of_rho(state%density(params%M), params%v_max, params%rho_max)
+    density_history(:, :, t + 1) = state%density
+    do lane = 1, params%n_lanes
+      flow_history(lane, t + 1) = q_of_rho(state%density(lane, params%M), &
+                                    params%v_max_lanes(lane), params%rho_max_lanes(lane))
+    end do
 
     if (mod(t, 100) == 0) then
       write(*, '(A,I0,A,F8.4,A,F8.4)') &
         'step ', t, '  t = ', state%t_current, &
-        '  mean_rho = ', sum(state%density) / real(params%M)
+        '  mean_rho = ', sum(state%density) / real(params%n_lanes * params%M)
     end if
   end do
+
+  if (state%clip_count > 0) then
+    write(*, '(A,I0,A)') 'WARNING: density was clamped in ', state%clip_count, &
+      ' cell-steps (lane-change source term too large; consider reducing k or dt).'
+  end if
 
   write(*, '(A,A)') 'Writing output to ', trim(output_file)
   call write_pde_netcdf(trim(output_file), params, density_history, flow_history)
