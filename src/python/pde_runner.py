@@ -31,6 +31,21 @@ def rho_critical(rho_max):
     """Argmax of q for Greenshields: ρ_c = ρ_max / 2."""
     return rho_max / 2.0
 
+# Newell-Daganzo (triangular) fundamental diagram
+NEWELL_W = 0.5  # must match Fortran NEWELL_W parameter
+
+def q_newell(rho, v_max, rho_max):
+    """Newell triangular flow: q(ρ) = min(v_max*ρ, w*(ρ_max - ρ))."""
+    return np.minimum(v_max * rho, NEWELL_W * (rho_max - rho))
+
+def dq_drho_newell(rho, v_max, rho_max):
+    """Piecewise constant: +v_max free-flow, -w congested."""
+    rc = rho_critical_newell(v_max, rho_max)
+    return np.where(rho < rc, v_max, np.where(rho > rc, -NEWELL_W, 0.0))
+
+def rho_critical_newell(v_max, rho_max):
+    """Newell critical density: ρ_c = w*ρ_max / (v_max + w)."""
+    return NEWELL_W * rho_max / (v_max + NEWELL_W)
 
 # ---------------------------------------------------------------------------
 # Fortran runner

@@ -77,7 +77,7 @@ def main():
                         choices=['constant', 'riemann', 'gaussian', 'sine'],
                         help='Initial condition (default: riemann)')
     parser.add_argument('--flux', default='lf',
-                        choices=['lf', 'godunov'],
+                        choices=['lf', 'godunov', 'newell'],
                         help='Numerical flux scheme (default: lf)')
     parser.add_argument('--bc', default='open',
                         choices=['open', 'periodic', 'sponge'],

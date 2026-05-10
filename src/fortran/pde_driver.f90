@@ -3,7 +3,7 @@
 ! Defaults: 200 500 1.0 1.0 0.1 0.9 riemann lf data/output/pde_simulation.nc
 program pde_driver
   use pde_solver
-  use pde_flux, only: q_of_rho
+  use pde_flux, only: q_of_rho, q_dispatch
   implicit none
 
   type(pde_state_t)  :: state
@@ -91,14 +91,14 @@ program pde_driver
 
   ! Store initial condition (t=0)
   density_history(:, 1) = state%density
-  flow_history(1) = q_of_rho(state%density(params%M), params%v_max, params%rho_max)
+  flow_history(1) = q_dispatch(state%density(params%M), params%v_max, params%rho_max, params%flux_type)
 
   ! ---------- time loop ----------
   do t = 1, params%n_steps
     if (params%use_adaptive_dt) call compute_dt(state, params, params%dt)
     call pde_step(state, params)
     density_history(:, t + 1) = state%density
-    flow_history(t + 1) = q_of_rho(state%density(params%M), params%v_max, params%rho_max)
+    flow_history(t + 1) = q_dispatch(state%density(params%M), params%v_max, params%rho_max, params%flux_type)
 
     if (mod(t, 100) == 0) then
       write(*, '(A,I0,A,F8.4,A,F8.4)') &

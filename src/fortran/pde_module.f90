@@ -108,10 +108,11 @@ contains
     end if
 
     ! Compute interface fluxes  flux(i) = F_{i+1/2}
-    if (trim(params%flux_type) == 'godunov') then
+    if (trim(params%flux_type) == 'godunov' .or. trim(params%flux_type) == 'newell') then
       do i = 0, M
-        state%flux(i) = godunov_flux( &
-          state%rho_ext(i), state%rho_ext(i+1), params%v_max, params%rho_max)
+        state%flux(i) = godunov_dispatch( &
+          state%rho_ext(i), state%rho_ext(i+1), &
+          params%v_max, params%rho_max, params%flux_type)
       end do
     else
       ! Default: Lax-Friedrichs
@@ -177,7 +178,11 @@ contains
     type(pde_params_t), intent(in)  :: params
     real,               intent(out) :: dt_out
     real :: max_speed, dt_conservative
-    max_speed      = maxval(abs(dq_drho(state%density, params%v_max, params%rho_max)))
+    if (trim(params%flux_type) == 'newell') then
+      max_speed = maxval(abs(dq_drho_newell(state%density, params%v_max, params%rho_max)))
+    else
+      max_speed = maxval(abs(dq_drho(state%density, params%v_max, params%rho_max)))
+    end if
     dt_conservative = params%cfl_number * params%dx / params%v_max
     if (max_speed < 1.0e-10) then
       dt_out = dt_conservative
