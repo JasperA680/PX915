@@ -43,7 +43,7 @@ all: test test_types test_init_crossroad test_junction test_network_run test_ns_
 # Build existing test program
 test: $(TEST_EXE)
 
-$(TEST_EXE): $(MODEL_SRC) $(SIM_SRC) $(IO_SRC) $(TEST_SRC)
+$(TEST_EXE): $(NETWORK_LIB_SRC) $(MODEL_SRC) $(SIM_SRC) $(IO_SRC) $(TEST_SRC)
 	mkdir -p $(BUILD_DIR)
 	$(FC) $(FFLAGS) $^ -o $@ $(NC_FLIBS)
 

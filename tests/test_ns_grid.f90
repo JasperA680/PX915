@@ -35,7 +35,7 @@ program test_ns_grid
 
 contains
 
-    subroutine seed_rng(s)
+    subroutine seed_rng(s)                  ! Routine to seed the randomness of the simulation for reproducibility
         integer, intent(in) :: s
         integer :: n
         integer, allocatable :: seed(:)
@@ -46,7 +46,7 @@ contains
         deallocate(seed)
     end subroutine seed_rng
 
-    subroutine close_boundaries(net)
+    subroutine close_boundaries(net)                ! Allows the grid to operate without switching of cars between road segments
         type(road_network_t), intent(inout) :: net
         integer :: r, ln
         do r = 1, size(net%roads)
@@ -59,7 +59,7 @@ contains
         end do
     end subroutine close_boundaries
 
-    subroutine seed_layout(net)
+    subroutine seed_layout(net)                     ! Allows the user to input a specific car layout, if desired
         type(road_network_t), intent(inout) :: net
         call place_car(net%roads(1)%lane(2), 2, 1)
         call place_car(net%roads(1)%lane(2), 6, 0)
@@ -69,14 +69,14 @@ contains
         call place_car(net%roads(4)%lane(2), 4, 0)
     end subroutine seed_layout
 
-    subroutine place_car(ln, pos, vel)
+    subroutine place_car(ln, pos, vel)              ! Places a car at a certain position in the network, used in seed_layout()
         type(lane_t), intent(inout) :: ln
         integer, intent(in) :: pos, vel
         ln%cells(pos)%has_car = .true.
         ln%cells(pos)%velocity = vel
     end subroutine place_car
 
-    subroutine print_state(net, step)
+    subroutine print_state(net, step)               ! Prints configuration of all roads in network, for visualisation during testing
         type(road_network_t), intent(in) :: net
         integer, intent(in) :: step
         character(len=L) :: out_lane, in_lane
@@ -91,7 +91,7 @@ contains
         end do
     end subroutine print_state
 
-    subroutine render_lane(cells, line)
+    subroutine render_lane(cells, line)             ! Prints configuration of a single lane, used in print_state()
         type(cell), intent(in) :: cells(:)
         character(len=*), intent(out) :: line
         integer :: i, v
@@ -105,7 +105,7 @@ contains
         end do
     end subroutine render_lane
 
-    subroutine check_step(net, step)
+    subroutine check_step(net, step)                ! Checking routine, sanity checks that the number of cars is conserved between steps
         type(road_network_t), intent(in) :: net
         integer, intent(in) :: step
         integer :: r, ln, Lk
@@ -153,7 +153,7 @@ contains
         end do
     end subroutine check_step
 
-    integer function count_occupied_old(net) result(n)
+    integer function count_occupied_old(net) result(n)  ! Counts number of cars in the network, used in check_step()
         type(road_network_t), intent(in) :: net
         integer :: r, ln, k
         n = 0
@@ -168,7 +168,7 @@ contains
         end do
     end function count_occupied_old
 
-    subroutine check_lane_ns(old_cells, new_cells, step, road_id, lane_id)
+    subroutine check_lane_ns(old_cells, new_cells, step, road_id, lane_id)  ! Checking function, but for the Nagel-Schreckenberg model
         type(cell), intent(in) :: old_cells(:), new_cells(:)
         integer, intent(in) :: step, road_id, lane_id
         integer :: n_old, n_new, i, idx, gap, v_calc, pos1, pos2, new_v, len

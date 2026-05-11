@@ -59,14 +59,14 @@ program test_types
     !------ count_occupied_network on an empty network ------------------
     call assert(count_occupied_network(net) == 0, 'empty network not zero')
 
-    net%roads(1)%lane(2)%cells(L) = V_OCCUPIED
-    net%roads(3)%lane(2)%cells(L) = V_OCCUPIED
+    net%roads(1)%lane(2)%cells(L)%has_car = .true.
+    net%roads(3)%lane(2)%cells(L)%has_car = .true.
     call assert(count_occupied_network(net) == 2, 'two V_OCCUPIED cells not counted')
 
     !------ snapshot_network copies cells -> old ------------------------
     call snapshot_network(net)
-    call assert(net%roads(1)%lane(2)%old(L) == V_OCCUPIED, 'snapshot road 1')
-    call assert(net%roads(3)%lane(2)%old(L) == V_OCCUPIED, 'snapshot road 3')
+    call assert(net%roads(1)%lane(2)%old(L)%has_car .eqv. .true., 'snapshot road 1')
+    call assert(net%roads(3)%lane(2)%old(L)%has_car .eqv. .true., 'snapshot road 3')
 
     !------ Tidy up -----------------------------------------------------
     do r = 1, 4
