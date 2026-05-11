@@ -1,9 +1,11 @@
 # Compiler
 FC = gfortran
 
-# NetCDF flags (Fortran wrapper + underlying C library)
+# NetCDF flags (Fortran wrapper + underlying C library).
+# nf-config --flibs and nc-config --libs both append -lnetcdf, which double-links
+# on this Mac.  Strip the trailing -lnetcdf from nf-config and let nc-config provide it.
 NC_FFLAGS := $(shell nf-config --fflags)
-NC_FLIBS   := $(shell nf-config --flibs) $(shell nc-config --libs)
+NC_FLIBS   := $(shell nf-config --flibs | sed -E 's/-lnetcdf$$//') $(shell nc-config --libs)
 
 # Compiler flags
 FFLAGS = -Wall -O2 $(NC_FFLAGS)
@@ -26,6 +28,11 @@ NETWORK_INIT_SRC = $(SRC_DIR)/network_init.f90
 JUNCTION_SRC     = $(SRC_DIR)/junction.f90
 NET_SIM_SRC      = $(SRC_DIR)/network_simulation.f90
 
+# Network builder + JSON config + driver (Python frontend integration).
+NETWORK_BUILDER_SRC = $(SRC_DIR)/network_builder.f90
+JSON_CONFIG_SRC     = $(SRC_DIR)/json_config.f90
+RUN_NETWORK_SRC     = $(SRC_DIR)/run_network.f90
+
 NETWORK_LIB_SRC = $(VEHICLE_SRC) $(NETWORK_SRC) $(NETWORK_INIT_SRC) $(JUNCTION_SRC) $(NET_SIM_SRC)
 
 # Executables
@@ -36,6 +43,7 @@ TEST_JUNCTION_EXE     = $(BUILD_DIR)/test_junction
 TEST_NETWORK_RUN_EXE  = $(BUILD_DIR)/test_network_run
 TEST_NS_GRID_EXE      = $(BUILD_DIR)/test_ns_grid
 TEST_NS_PERIODIC_EXE  = $(BUILD_DIR)/test_ns_periodic
+RUN_NETWORK_EXE       = $(BUILD_DIR)/run_network
 
 # Default target
 all: test test_types test_init_crossroad test_junction test_network_run test_ns_grid test_ns_periodic
@@ -114,6 +122,15 @@ $(TEST_NS_PERIODIC_EXE): $(VEHICLE_SRC) $(NETWORK_SRC) tests/test_ns_periodic.f9
 
 run_test_ns_periodic: test_ns_periodic
 	./$(TEST_NS_PERIODIC_EXE)
+
+# Python-frontend driver (reads JSON config, runs sim, writes NetCDF).
+# P1: stub driver (build network from JSON, print summary).
+# P2: extends with simulation loop and NetCDF writer.
+run_network: $(RUN_NETWORK_EXE)
+
+$(RUN_NETWORK_EXE): $(NETWORK_LIB_SRC) $(NETWORK_BUILDER_SRC) $(JSON_CONFIG_SRC) $(RUN_NETWORK_SRC)
+	mkdir -p $(BUILD_DIR)
+	$(FC) $(FFLAGS) -J$(BUILD_DIR) $^ -o $@
 
 # Clean build files
 clean:
