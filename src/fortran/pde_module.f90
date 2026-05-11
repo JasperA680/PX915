@@ -174,11 +174,12 @@ contains
         state%rho_ext(lane, M+1) = params%rho_right_bc_lanes(lane)
       end if
 
-      if (trim(params%flux_type) == 'godunov') then
+      ! Godunov (Greenshields or Newell via dispatch); LF falls back to Greenshields.
+      if (trim(params%flux_type) == 'godunov' .or. trim(params%flux_type) == 'newell') then
         do i = 0, M
-          state%flux(lane, i) = godunov_flux( &
+          state%flux(lane, i) = godunov_dispatch( &
             state%rho_ext(lane, i), state%rho_ext(lane, i+1), &
-            params%v_max_lanes(lane), params%rho_max_lanes(lane))
+            params%v_max_lanes(lane), params%rho_max_lanes(lane), params%flux_type)
         end do
       else
         do i = 0, M
@@ -260,9 +261,14 @@ contains
     max_speed    = 0.0
     v_max_global = 0.0
     do lane = 1, params%n_lanes
-      lane_speed = maxval(abs(dq_drho(state%density(lane,:), &
-                               params%v_max_lanes(lane), params%rho_max_lanes(lane))))
-      if (lane_speed    > max_speed)    max_speed    = lane_speed
+      if (trim(params%flux_type) == 'newell') then
+        lane_speed = maxval(abs(dq_drho_newell(state%density(lane,:), &
+                                 params%v_max_lanes(lane), params%rho_max_lanes(lane))))
+      else
+        lane_speed = maxval(abs(dq_drho(state%density(lane,:), &
+                                 params%v_max_lanes(lane), params%rho_max_lanes(lane))))
+      end if
+      if (lane_speed > max_speed) max_speed = lane_speed
       if (params%v_max_lanes(lane) > v_max_global) v_max_global = params%v_max_lanes(lane)
     end do
 

@@ -2,7 +2,11 @@ module pde_flux
   implicit none
   private
   public :: v_of_rho, q_of_rho, dq_drho, rho_critical
+  public :: q_newell, dq_drho_newell, rho_critical_newell
+  public :: q_dispatch, dq_drho_dispatch, godunov_dispatch
   public :: lax_friedrichs_flux, godunov_flux
+
+  real, parameter :: NEWELL_W = 0.5  ! congestion wave speed (default)
 
 contains
 
@@ -82,5 +86,111 @@ contains
       end if
     end if
   end function godunov_flux
+
+  ! ---------------------------------------------------------------
+  ! Newell-Daganzo (triangular) fundamental diagram
+  !
+  !   q(rho) = min( v_f * rho,  w * (rho_max - rho) )
+  !
+  ! Two regimes meeting at the critical density:
+  !   rho_c = w * rho_max / (v_f + w)
+  ! Below rho_c: free-flow,    q grows linearly with slope v_f
+  ! Above rho_c: congestion,   q falls linearly with slope -w
+  !
+  ! Note: v_f reuses the v_max parameter; w is hardcoded for now via
+  ! NEWELL_W. To make w runtime-configurable, add it to pde_params_t
+  ! and thread through the dispatchers.
+  ! ---------------------------------------------------------------
+
+  elemental function q_newell(rho, v_max, rho_max) result(q)
+    real, intent(in) :: rho, v_max, rho_max
+    real :: q
+    q = min(v_max * rho, NEWELL_W * (rho_max - rho))
+  end function q_newell
+
+  ! Characteristic speed for Newell flux (piecewise constant):
+  !   +v_max in free-flow,  -NEWELL_W in congested
+  ! Returns 0 exactly at the kink to avoid CFL instability.
+  elemental function dq_drho_newell(rho, v_max, rho_max) result(dq)
+    real, intent(in) :: rho, v_max, rho_max
+    real :: dq, rc
+    rc = rho_critical_newell(v_max, rho_max)
+    if (rho < rc) then
+      dq = v_max
+    else if (rho > rc) then
+      dq = -NEWELL_W
+    else
+      dq = 0.0
+    end if
+  end function dq_drho_newell
+
+  elemental function rho_critical_newell(v_max, rho_max) result(rc)
+    real, intent(in) :: v_max, rho_max
+    real :: rc
+    rc = NEWELL_W * rho_max / (v_max + NEWELL_W)
+  end function rho_critical_newell
+
+  ! Godunov flux for Newell-Daganzo (concave, piecewise linear).
+  ! Same case structure as the Greenshields version since q is concave.
+  function godunov_newell_flux(rho_L, rho_R, v_max, rho_max) result(F)
+    real, intent(in) :: rho_L, rho_R, v_max, rho_max
+    real :: F, rc, qL, qR
+    rc = rho_critical_newell(v_max, rho_max)
+    qL = q_newell(rho_L, v_max, rho_max)
+    qR = q_newell(rho_R, v_max, rho_max)
+    if (rho_L <= rho_R) then
+      if (rho_L >= rc) then
+        F = qR
+      else if (rho_R <= rc) then
+        F = qL
+      else
+        F = min(qL, qR)
+      end if
+    else
+      if (rho_L <= rc) then
+        F = qL
+      else if (rho_R >= rc) then
+        F = qR
+      else
+        F = q_newell(rc, v_max, rho_max)
+      end if
+    end if
+  end function godunov_newell_flux
+
+  ! ---------------------------------------------------------------
+  ! Dispatchers — select the closure based on flux_type string
+  ! ---------------------------------------------------------------
+  function q_dispatch(rho, v_max, rho_max, flux_type) result(q)
+    real,             intent(in) :: rho, v_max, rho_max
+    character(len=*), intent(in) :: flux_type
+    real :: q
+    if (trim(flux_type) == 'newell') then
+      q = q_newell(rho, v_max, rho_max)
+    else
+      q = q_of_rho(rho, v_max, rho_max)
+    end if
+  end function q_dispatch
+
+  function dq_drho_dispatch(rho, v_max, rho_max, flux_type) result(dq)
+    real,             intent(in) :: rho, v_max, rho_max
+    character(len=*), intent(in) :: flux_type
+    real :: dq
+    if (trim(flux_type) == 'newell') then
+      dq = dq_drho_newell(rho, v_max, rho_max)
+    else
+      dq = dq_drho(rho, v_max, rho_max)
+    end if
+  end function dq_drho_dispatch
+
+  function godunov_dispatch(rho_L, rho_R, v_max, rho_max, flux_type) result(F)
+    real,             intent(in) :: rho_L, rho_R, v_max, rho_max
+    character(len=*), intent(in) :: flux_type
+    real :: F
+    if (trim(flux_type) == 'newell') then
+      F = godunov_newell_flux(rho_L, rho_R, v_max, rho_max)
+    else
+      F = godunov_flux(rho_L, rho_R, v_max, rho_max)
+    end if
+  end function godunov_dispatch
 
 end module pde_flux

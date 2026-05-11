@@ -199,9 +199,17 @@ def plot_pde_flow(data, ax=None, title=None):
     flow  = data['flow']
     time  = data['time']
     attrs = data['attrs']
-    v_max   = float(attrs.get('v_max',   1.0))
-    rho_max = float(attrs.get('rho_max', 1.0))
-    q_max   = v_max * rho_max / 4.0
+    v_max     = float(attrs.get('v_max',   1.0))
+    rho_max   = float(attrs.get('rho_max', 1.0))
+    flux_type = str(attrs.get('flux_type', 'lf'))
+    if flux_type == 'newell':
+        # Newell: q_max = v_f * rho_c = v_f * w * rho_max / (v_f + w)
+        # NEWELL_W must match the Fortran constant in pde_flux.f90
+        NEWELL_W = 0.5
+        q_max = v_max * NEWELL_W * rho_max / (v_max + NEWELL_W)
+    else:
+        # Greenshields: q_max = v_max * rho_max / 4
+        q_max = v_max * rho_max / 4.0
 
     if ax is None:
         fig, ax = plt.subplots(figsize=(8, 3))

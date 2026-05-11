@@ -10,7 +10,7 @@
 ! Arg 14: comma-separated rho_max per lane, e.g. "1.0,1.0" (optional)
 program pde_driver
   use pde_solver
-  use pde_flux, only: q_of_rho
+  use pde_flux, only: q_of_rho, q_dispatch
   implicit none
 
   type(pde_state_t)  :: state
@@ -36,7 +36,7 @@ program pde_driver
   params%domain_length  = 1.0
   params%C_checkpoint   = 100
   params%use_adaptive_dt = .true.
-  params%n_sponge       = 10
+  params%n_sponge       = 20
   params%sponge_damping = 5.0 * params%v_max / params%domain_length
   params%n_lanes        = 1
   params%lane_change_rate = 0.0
@@ -139,10 +139,12 @@ program pde_driver
   ! ---------- initialise ----------
   call pde_initialise(state, params)
 
+  ! Store initial condition (t=0)
   density_history(:, :, 1) = state%density
   do lane = 1, params%n_lanes
-    flow_history(lane, 1) = q_of_rho(state%density(lane, params%M), &
-                              params%v_max_lanes(lane), params%rho_max_lanes(lane))
+    flow_history(lane, 1) = q_dispatch(state%density(lane, params%M), &
+                              params%v_max_lanes(lane), params%rho_max_lanes(lane), &
+                              params%flux_type)
   end do
 
   ! ---------- time loop ----------
@@ -151,8 +153,9 @@ program pde_driver
     call pde_step(state, params)
     density_history(:, :, t + 1) = state%density
     do lane = 1, params%n_lanes
-      flow_history(lane, t + 1) = q_of_rho(state%density(lane, params%M), &
-                                    params%v_max_lanes(lane), params%rho_max_lanes(lane))
+      flow_history(lane, t + 1) = q_dispatch(state%density(lane, params%M), &
+                                    params%v_max_lanes(lane), params%rho_max_lanes(lane), &
+                                    params%flux_type)
     end do
 
     if (mod(t, 100) == 0) then
