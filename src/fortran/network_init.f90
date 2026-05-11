@@ -20,7 +20,7 @@ module network_init_mod
     implicit none
     private
 
-    public :: init_crossroad, init_t_junction, free_network
+    public :: init_crossroad, init_t_junction, free_network, init_lane
 
 contains
 
