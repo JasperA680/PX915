@@ -1,9 +1,8 @@
 module vehicle_mod
     !--------------------------------------------------------------------
-    ! Vehicle / cell state codes for the networked TASEP.
-    !
-    ! V_EMPTY = 0 (cell vacant); V_OCCUPIED = 1 (cell occupied).
-    ! Routing decisions live on the junction (in_routes), not the cell.
+    ! Vehicle occupancy codes for the networked model.
+    ! Occupancy is tracked by cell%has_car; V_EMPTY/V_OCCUPIED are used
+    ! by the junction holding-cell detection logic.
     !--------------------------------------------------------------------
     implicit none
     private

@@ -40,8 +40,8 @@ program test_init_crossroad
         call assert(net%roads(r)%lane(1)%flow_direction == +1, 'lane 1 flow_direction')
         call assert(net%roads(r)%lane(2)%flow_direction == -1, 'lane 2 flow_direction')
 
-        call assert(all(net%roads(r)%lane(1)%cells == V_EMPTY), 'lane 1 not empty')
-        call assert(all(net%roads(r)%lane(2)%cells == V_EMPTY), 'lane 2 not empty')
+        call assert(all(.not. net%roads(r)%lane(1)%cells%has_car), 'lane 1 not empty')
+        call assert(all(.not. net%roads(r)%lane(2)%cells%has_car), 'lane 2 not empty')
 
         ! Lane 2 is inbound to the junction (open inflow at site 1, far end).
         call assert(      net%roads(r)%lane(2)%open_in,  'lane 2 open_in')

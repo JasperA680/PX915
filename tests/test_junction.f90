@@ -57,7 +57,8 @@ contains
         ! Place V_OCCUPIED in the holding cell (site L of inbound lane 2) for leg.
         type(road_network_t), intent(inout) :: net
         integer, intent(in) :: leg
-        net%roads(leg)%lane(2)%cells(L) = V_OCCUPIED
+        net%roads(leg)%lane(2)%cells(L)%has_car = .true.
+        net%roads(leg)%lane(2)%cells(L)%velocity = 0
     end subroutine plant
 
     subroutine force_route(net, jid, leg, out_idx)
@@ -73,7 +74,11 @@ contains
         type(road_network_t), intent(in) :: net
         integer, intent(in) :: leg
         integer :: v
-        v = net%roads(leg)%lane(2)%cells(L)
+        if (net%roads(leg)%lane(2)%cells(L)%has_car) then
+            v = V_OCCUPIED
+        else
+            v = V_EMPTY
+        end if
     end function holding_cell
 
     function dest_cell(net, leg) result(v)
@@ -81,7 +86,11 @@ contains
         type(road_network_t), intent(in) :: net
         integer, intent(in) :: leg
         integer :: v
-        v = net%roads(leg)%lane(1)%cells(1)
+        if (net%roads(leg)%lane(1)%cells(1)%has_car) then
+            v = V_OCCUPIED
+        else
+            v = V_EMPTY
+        end if
     end function dest_cell
 
     subroutine assert(cond, msg)
@@ -139,7 +148,7 @@ contains
         call fresh(net)
         call plant(net, 1)
         call force_route(net, 1, 1, 3)
-        net%roads(3)%lane(1)%cells(1) = V_OCCUPIED   ! pre-fill destination
+        net%roads(3)%lane(1)%cells(1)%has_car = .true.   ! pre-fill destination
 
         call snapshot_network(net)
         call evaluate_junctions(net)

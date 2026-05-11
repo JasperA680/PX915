@@ -74,15 +74,19 @@ contains
 
         ! 1. Read holding cells from the old snapshot.
         do k = 1, N
-            src_road   = net%junctions(jid)%in_road(k)
-            src_lane   = net%junctions(jid)%in_lane(k)
-            L_src      = net%roads(src_road)%lane(src_lane)%length
-            holding(k) = net%roads(src_road)%lane(src_lane)%old(L_src)
+            src_road = net%junctions(jid)%in_road(k)
+            src_lane = net%junctions(jid)%in_lane(k)
+            L_src    = net%roads(src_road)%lane(src_lane)%length
+            if (net%roads(src_road)%lane(src_lane)%old(L_src)%has_car) then
+                holding(k) = V_OCCUPIED
+            else
+                holding(k) = V_EMPTY
+            end if
         end do
 
         ! 2. Sample destination from in_routes for each occupied leg.
         do k = 1, N
-            if (holding(k) == V_EMPTY) cycle
+            if (holding(k) == 0) cycle
             call random_number(r)
             cumsum    = 0.0
             dst_idx(k) = net%junctions(jid)%n_out   ! fallback: last outbound
@@ -100,7 +104,7 @@ contains
         ! 3. Physical-clear check (destination site 1 in the old snapshot).
         do k = 1, N
             if (holding(k) == V_EMPTY) cycle
-            phys_clear(k) = (net%roads(dst_road(k))%lane(dst_lane(k))%old(1) == V_EMPTY)
+            phys_clear(k) = (.not. net%roads(dst_road(k))%lane(dst_lane(k))%old(1)%has_car)
         end do
 
         ! 4. Build yield matrix.
@@ -122,8 +126,10 @@ contains
             src_road = net%junctions(jid)%in_road(k)
             src_lane = net%junctions(jid)%in_lane(k)
             L_src    = net%roads(src_road)%lane(src_lane)%length
-            net%roads(dst_road(k))%lane(dst_lane(k))%cells(1) = V_OCCUPIED
-            net%roads(src_road)%lane(src_lane)%cells(L_src)   = V_EMPTY
+            net%roads(dst_road(k))%lane(dst_lane(k))%cells(1)%has_car = .true.
+            net%roads(dst_road(k))%lane(dst_lane(k))%cells(1)%velocity = 0
+            net%roads(src_road)%lane(src_lane)%cells(L_src)%has_car   = .false.
+            net%roads(src_road)%lane(src_lane)%cells(L_src)%velocity = 0
         end do
     end subroutine evaluate_one_junction
 

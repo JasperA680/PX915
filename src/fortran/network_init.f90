@@ -161,8 +161,10 @@ contains
         ln%length         = L
         ln%flow_direction = fd
         allocate(ln%cells(L), ln%old(L))
-        ln%cells = V_EMPTY
-        ln%old   = V_EMPTY
+        ln%cells%has_car = .false.
+        ln%cells%velocity = 0
+        ln%old%has_car   = .false.
+        ln%old%velocity = 0
     end subroutine init_lane
 
     subroutine free_network(net)
