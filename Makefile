@@ -18,6 +18,7 @@ SIM_SRC   = $(SRC_DIR)/simulation.f90
 IO_SRC    = $(SRC_DIR)/io.f90
 TEST_SRC  = $(SRC_DIR)/test_simulation.f90
 FD_SRC    = $(SRC_DIR)/fundamental_diagram.f90
+BENCH_SRC = $(SRC_DIR)/benchmark_tasep.f90
 
 # PDE source files (pde_flux and pde_lanechange must precede pde_module)
 PDE_FLUX_SRC = $(SRC_DIR)/pde_flux.f90
@@ -26,9 +27,10 @@ PDE_MOD_SRC  = $(SRC_DIR)/pde_module.f90
 PDE_DRV_SRC  = $(SRC_DIR)/pde_driver.f90
 
 # Executables
-TEST_EXE = $(BUILD_DIR)/test_simulation
-FUND_EXE = $(BUILD_DIR)/fundamental_diagram
-PDE_EXE  = $(BUILD_DIR)/pde_solver
+TEST_EXE  = $(BUILD_DIR)/test_simulation
+FUND_EXE  = $(BUILD_DIR)/fundamental_diagram
+PDE_EXE   = $(BUILD_DIR)/pde_solver
+BENCH_EXE = $(BUILD_DIR)/benchmark_tasep
 
 # Default simulation parameters (override: make run L=50 ALPHA=0.3 BETA=0.7)
 L       ?= 10
@@ -49,7 +51,7 @@ PDE_BC     ?= open
 PDE_OUT    ?= data/output/pde_simulation.nc
 
 # Default target: build all executables
-all: $(TEST_EXE) $(FUND_EXE) $(PDE_EXE)
+all: $(TEST_EXE) $(FUND_EXE) $(PDE_EXE) $(BENCH_EXE)
 
 # Build simulation driver (needs NetCDF)
 $(TEST_EXE): $(MODEL_SRC) $(SIM_SRC) $(IO_SRC) $(TEST_SRC)
@@ -67,6 +69,16 @@ $(PDE_EXE): $(PDE_FLUX_SRC) $(PDE_LC_SRC) $(PDE_MOD_SRC) $(PDE_DRV_SRC)
 	$(FC) $(FFLAGS) $^ -o $@ $(NC_FLIBS)
 
 pde: $(PDE_EXE)
+
+# Build benchmark driver (serial baseline for the parallelisation effort)
+$(BENCH_EXE): $(MODEL_SRC) $(SIM_SRC) $(IO_SRC) $(BENCH_SRC)
+	mkdir -p $(BUILD_DIR)
+	$(FC) $(FFLAGS) $^ -o $@ $(NC_FLIBS)
+
+# Run benchmark sweep (writes data/output/benchmark.nc)
+benchmark: $(BENCH_EXE)
+	mkdir -p data/output
+	./$(BENCH_EXE)
 
 # Run simulation (params can be overridden: make run L=50 N_STEPS=500 ALPHA=0.3 BETA=0.7)
 run: $(TEST_EXE)

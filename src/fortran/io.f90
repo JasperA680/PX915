@@ -5,6 +5,7 @@ module tasep_io
 
     public :: write_netcdf
     public :: write_fundamental_diagram_netcdf
+    public :: write_benchmark_netcdf
 
 contains
 
@@ -113,6 +114,61 @@ contains
         call check( nf90_close(ncid) )
 
     end subroutine write_fundamental_diagram_netcdf
+
+    subroutine write_benchmark_netcdf(filename, n_L, n_N, n_rep, &
+                                      alpha, beta, &
+                                      L_values, N_values, &
+                                      wallclock, steady_density, steady_current)
+        character(len=*), intent(in) :: filename
+        integer,          intent(in) :: n_L, n_N, n_rep
+        real,             intent(in) :: alpha, beta
+        integer,          intent(in) :: L_values(n_L)
+        integer,          intent(in) :: N_values(n_N)
+        real,             intent(in) :: wallclock(n_L, n_N, n_rep)
+        real,             intent(in) :: steady_density(n_L)
+        real,             intent(in) :: steady_current(n_L)
+
+        integer :: ncid, dim_L, dim_N, dim_R
+        integer :: vid_L, vid_N, vid_w, vid_rho, vid_J
+
+        call check( nf90_create(filename, NF90_CLOBBER, ncid) )
+
+        call check( nf90_def_dim(ncid, 'n_L',   n_L,   dim_L) )
+        call check( nf90_def_dim(ncid, 'n_N',   n_N,   dim_N) )
+        call check( nf90_def_dim(ncid, 'n_rep', n_rep, dim_R) )
+
+        call check( nf90_put_att(ncid, NF90_GLOBAL, 'model',    '1D TASEP benchmark sweep') )
+        call check( nf90_put_att(ncid, NF90_GLOBAL, 'alpha',    alpha) )
+        call check( nf90_put_att(ncid, NF90_GLOBAL, 'beta',     beta) )
+        call check( nf90_put_att(ncid, NF90_GLOBAL, 'compiler', 'gfortran -O2') )
+
+        call check( nf90_def_var(ncid, 'L_values', NF90_INT, [dim_L], vid_L) )
+        call check( nf90_put_att(ncid, vid_L, 'long_name', 'lattice sizes swept') )
+
+        call check( nf90_def_var(ncid, 'N_values', NF90_INT, [dim_N], vid_N) )
+        call check( nf90_put_att(ncid, vid_N, 'long_name', 'n_steps values swept') )
+
+        call check( nf90_def_var(ncid, 'wallclock', NF90_FLOAT, [dim_L, dim_N, dim_R], vid_w) )
+        call check( nf90_put_att(ncid, vid_w, 'long_name', 'wallclock seconds per run') )
+        call check( nf90_put_att(ncid, vid_w, 'units', 'seconds') )
+
+        call check( nf90_def_var(ncid, 'steady_density', NF90_FLOAT, [dim_L], vid_rho) )
+        call check( nf90_put_att(ncid, vid_rho, 'long_name', 'mean steady-state bulk density') )
+
+        call check( nf90_def_var(ncid, 'steady_current', NF90_FLOAT, [dim_L], vid_J) )
+        call check( nf90_put_att(ncid, vid_J, 'long_name', 'mean steady-state current') )
+
+        call check( nf90_enddef(ncid) )
+
+        call check( nf90_put_var(ncid, vid_L,   L_values) )
+        call check( nf90_put_var(ncid, vid_N,   N_values) )
+        call check( nf90_put_var(ncid, vid_w,   wallclock) )
+        call check( nf90_put_var(ncid, vid_rho, steady_density) )
+        call check( nf90_put_var(ncid, vid_J,   steady_current) )
+
+        call check( nf90_close(ncid) )
+
+    end subroutine write_benchmark_netcdf
 
     subroutine check(status)
         integer, intent(in) :: status
