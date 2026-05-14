@@ -203,7 +203,7 @@ contains
       call compute_lane_change_sources( &
         state%density, params%n_lanes, M, &
         params%v_max_lanes, params%rho_max_lanes, &
-        params%lane_change_rate, source)
+        params%lane_change_rate, params%v_limit, source)
       do lane = 1, params%n_lanes
         do i = 1, M
           state%density(lane, i) = state%density(lane, i) + params%dt * source(lane, i)
@@ -270,7 +270,8 @@ contains
       if (params%v_max_lanes(lane) > v_max_global) v_max_global = params%v_max_lanes(lane)
     end do
 
-    dt_conservative = params%cfl_number * params%dx / v_max_global
+    ! v_limit ≤ v_max, so min(..., v_limit) can only tighten or equal the bound.
+    dt_conservative = params%cfl_number * params%dx / min(v_max_global, params%v_limit)
     if (max_speed < 1.0e-10) then
       dt_out = dt_conservative
     else

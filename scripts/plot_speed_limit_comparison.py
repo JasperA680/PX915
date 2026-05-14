@@ -70,6 +70,11 @@ def main():
     parser.add_argument('--bc',    default='open',
                         choices=['open', 'periodic', 'sponge'],
                         help='Boundary condition (default: open)')
+    parser.add_argument('--n-lanes', type=int, default=1,
+                        help='Number of lanes (default: 1). With n_lanes>1 each panel '
+                             'shows total density summed over lanes.')
+    parser.add_argument('--k', type=float, default=0.0,
+                        help='Lane-change rate (default: 0). Only used when n_lanes>1.')
     parser.add_argument('--save', metavar='FILENAME', nargs='?', const='',
                         help='Save figure. Omit FILENAME to use default name.')
     parser.add_argument('--no-run', action='store_true',
@@ -83,7 +88,8 @@ def main():
     if args.save is None:
         save_path = None
     elif args.save == '':
-        save_path = ROOT / 'plots' / f'speed_limit_{args.preset}.png'
+        lanes_tag = f'_lanes{args.n_lanes}' if args.n_lanes > 1 else ''
+        save_path = ROOT / 'plots' / f'speed_limit_{args.preset}{lanes_tag}.png'
     else:
         save_path = ROOT / 'plots' / args.save
 
@@ -143,6 +149,8 @@ def main():
                             rho_left_bc=rho_left,
                             rho_right_bc=rho_right,
                             v_limit=v_limit,
+                            n_lanes=args.n_lanes,
+                            lane_change_rate=args.k,
                         ),
                         output_path=nc_path,
                     )
