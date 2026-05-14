@@ -4,6 +4,7 @@ module tasep_io
     private
 
     public :: write_netcdf
+    public :: write_netcdf_thinned
     public :: write_fundamental_diagram_netcdf
     public :: write_benchmark_netcdf
 
@@ -58,6 +59,57 @@ contains
         call check( nf90_close(ncid) )
 
     end subroutine write_netcdf
+
+    subroutine write_netcdf_thinned(filename, L, n_steps, record_every, n_recorded, &
+                                     alpha, beta, history, density_history, current_history)
+        ! Like write_netcdf but history has n_recorded snapshots (one per record_every steps).
+        ! density_history and current_history are still full-resolution (n_steps entries).
+        character(len=*), intent(in) :: filename
+        integer,          intent(in) :: L, n_steps, record_every, n_recorded
+        real,             intent(in) :: alpha, beta
+        integer,          intent(in) :: history(L, n_recorded)
+        real,             intent(in) :: density_history(n_steps)
+        integer,          intent(in) :: current_history(n_steps)
+
+        integer :: ncid, dim_site, dim_rec, dim_time
+        integer :: varid_history, varid_density, varid_current
+
+        call check( nf90_create(filename, NF90_CLOBBER, ncid) )
+
+        call check( nf90_def_dim(ncid, 'site',           L,          dim_site) )
+        call check( nf90_def_dim(ncid, 'time_recorded',  n_recorded, dim_rec)  )
+        call check( nf90_def_dim(ncid, 'time',           n_steps,    dim_time) )
+
+        call check( nf90_put_att(ncid, NF90_GLOBAL, 'model',        '1D TASEP open boundary') )
+        call check( nf90_put_att(ncid, NF90_GLOBAL, 'L',            L) )
+        call check( nf90_put_att(ncid, NF90_GLOBAL, 'n_steps',      n_steps) )
+        call check( nf90_put_att(ncid, NF90_GLOBAL, 'record_every', record_every) )
+        call check( nf90_put_att(ncid, NF90_GLOBAL, 'n_recorded',   n_recorded) )
+        call check( nf90_put_att(ncid, NF90_GLOBAL, 'alpha',        alpha) )
+        call check( nf90_put_att(ncid, NF90_GLOBAL, 'beta',         beta) )
+
+        call check( nf90_def_var(ncid, 'history', NF90_INT, &
+                                 [dim_site, dim_rec], varid_history) )
+        call check( nf90_put_att(ncid, varid_history, 'long_name', &
+                                 'lattice occupancy every record_every steps (0=empty, 1=occupied)') )
+
+        call check( nf90_def_var(ncid, 'density', NF90_FLOAT, &
+                                 [dim_time], varid_density) )
+        call check( nf90_put_att(ncid, varid_density, 'long_name', 'mean density rho = N/L (every step)') )
+
+        call check( nf90_def_var(ncid, 'current', NF90_INT, &
+                                 [dim_time], varid_current) )
+        call check( nf90_put_att(ncid, varid_current, 'long_name', 'particle exits per timestep (every step)') )
+
+        call check( nf90_enddef(ncid) )
+
+        call check( nf90_put_var(ncid, varid_history, history) )
+        call check( nf90_put_var(ncid, varid_density, density_history) )
+        call check( nf90_put_var(ncid, varid_current, current_history) )
+
+        call check( nf90_close(ncid) )
+
+    end subroutine write_netcdf_thinned
 
     subroutine write_fundamental_diagram_netcdf(filename, L, n_points, n_burnin, n_measure, &
                                                  fixed_beta, fixed_alpha, &

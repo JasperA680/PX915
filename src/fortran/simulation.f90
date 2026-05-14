@@ -4,6 +4,7 @@ module simulation
     private
 
     public :: run_simulation
+    public :: run_simulation_thin
     public :: measure_steady_state
 
 contains
@@ -49,6 +50,39 @@ contains
         end do
 
     end subroutine run_simulation
+
+    subroutine run_simulation_thin(L, n_steps, record_every, n_recorded, alpha, beta, &
+                                   history, density_history, current_history, total_exits)
+        ! Like run_simulation but only records a history snapshot every record_every steps.
+        ! Caller computes n_recorded = ceiling(n_steps / record_every) and allocates
+        ! history(L, n_recorded). density_history and current_history remain full-resolution.
+        integer, intent(in)  :: L, n_steps, record_every, n_recorded
+        real,    intent(in)  :: alpha, beta
+        integer, intent(out) :: history(L, n_recorded)
+        real,    intent(out) :: density_history(n_steps)
+        integer, intent(out) :: current_history(n_steps)
+        integer, intent(out) :: total_exits
+
+        integer :: state(L)
+        integer :: step, rec, exit_count
+
+        call initialise_lattice(state, L)
+        total_exits = 0
+        rec = 0
+
+        do step = 1, n_steps
+            call tasep_step(state, L, alpha, beta, exit_count)
+
+            if (mod(step - 1, record_every) == 0) then
+                rec = rec + 1
+                history(:, rec) = state
+            end if
+            density_history(step) = compute_density(state, L)
+            current_history(step) = exit_count
+            total_exits = total_exits + exit_count
+        end do
+
+    end subroutine run_simulation_thin
 
     subroutine measure_steady_state(L, n_burnin, n_measure, alpha, beta, mean_density, mean_current)
         ! Run TASEP and return mean density and current over the measurement window.
