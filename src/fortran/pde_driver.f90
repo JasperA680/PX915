@@ -1,13 +1,16 @@
-! PDE solver driver — multi-lane extension.
+! PDE solver driver — multi-lane extension with speed limit.
 !
 ! Usage (all positional, backward-compatible):
 !   pde_solver [M] [N_STEPS] [V_MAX] [RHO_MAX] [RHO_LEFT] [RHO_RIGHT]
-!              [IC_TYPE] [FLUX_TYPE] [BC_TYPE] [OUTPUT] [N_LANES] [LANE_CHANGE_RATE]
-!              [V_MAX_LANES] [RHO_MAX_LANES]
+!              [IC_TYPE] [FLUX_TYPE] [BC_TYPE] [V_LIMIT] [OUTPUT]
+!              [N_LANES] [LANE_CHANGE_RATE] [V_MAX_LANES] [RHO_MAX_LANES]
 !
-! Arguments 1-12 identical to before.
-! Arg 13: comma-separated v_max per lane, e.g. "1.0,1.5"  (optional; scalar arg 3 broadcasts if omitted)
-! Arg 14: comma-separated rho_max per lane, e.g. "1.0,1.0" (optional)
+! Arg 10: V_LIMIT — speed cap ≤ V_MAX (default = V_MAX, no restriction)
+! Arg 11: OUTPUT  — NetCDF output path
+! Arg 12: N_LANES — number of lanes (default 1)
+! Arg 13: LANE_CHANGE_RATE — k ≥ 0 (default 0)
+! Arg 14: comma-separated v_max per lane, e.g. "1.0,1.5"  (optional)
+! Arg 15: comma-separated rho_max per lane, e.g. "1.0,1.0" (optional)
 program pde_driver
   use pde_solver
   use pde_flux, only: q_of_rho, q_dispatch
@@ -38,11 +41,12 @@ program pde_driver
   params%use_adaptive_dt = .true.
   params%n_sponge       = 20
   params%sponge_damping = 5.0 * params%v_max / params%domain_length
+  params%v_limit        = params%v_max   ! default: no speed restriction
   params%n_lanes        = 1
   params%lane_change_rate = 0.0
   output_file = 'data/output/pde_simulation.nc'
 
-  ! ---------- command-line overrides (args 1–12 unchanged) ----------
+  ! ---------- command-line overrides ----------
   if (command_argument_count() >= 1) then
     call get_command_argument(1, arg); read(arg, *) params%M
   end if
@@ -71,13 +75,16 @@ program pde_driver
     call get_command_argument(9, arg); params%bc_type = trim(arg)
   end if
   if (command_argument_count() >= 10) then
-    call get_command_argument(10, arg); output_file = trim(arg)
+    call get_command_argument(10, arg); read(arg, *) params%v_limit
   end if
   if (command_argument_count() >= 11) then
-    call get_command_argument(11, arg); read(arg, *) params%n_lanes
+    call get_command_argument(11, arg); output_file = trim(arg)
   end if
   if (command_argument_count() >= 12) then
-    call get_command_argument(12, arg); read(arg, *) params%lane_change_rate
+    call get_command_argument(12, arg); read(arg, *) params%n_lanes
+  end if
+  if (command_argument_count() >= 13) then
+    call get_command_argument(13, arg); read(arg, *) params%lane_change_rate
   end if
 
   ! ---------- derived parameters ----------
@@ -87,23 +94,20 @@ program pde_driver
   ! Broadcast scalars into per-lane arrays (allocates the arrays)
   call pde_setup_params(params)
 
-  ! ---------- per-lane overrides (args 13–14) ----------
-  ! Arg 13: comma-separated v_max list, e.g. "1.0,1.5"
-  if (command_argument_count() >= 13) then
-    call get_command_argument(13, arg)
+  ! ---------- per-lane overrides (args 14–15) ----------
+  if (command_argument_count() >= 14) then
+    call get_command_argument(14, arg)
     call parse_real_list(trim(arg), params%v_max_lanes, n_found)
     if (n_found /= params%n_lanes) then
       write(*, '(A,I0,A,I0)') 'ERROR: v_max_lanes list length (', n_found, &
         ') must equal n_lanes (', params%n_lanes, ')'
       stop 1
     end if
-    ! Recompute dt using global max v_max across lanes
     params%dt = params%cfl_number * params%dx / maxval(params%v_max_lanes)
   end if
 
-  ! Arg 14: comma-separated rho_max list
-  if (command_argument_count() >= 14) then
-    call get_command_argument(14, arg)
+  if (command_argument_count() >= 15) then
+    call get_command_argument(15, arg)
     call parse_real_list(trim(arg), params%rho_max_lanes, n_found)
     if (n_found /= params%n_lanes) then
       write(*, '(A,I0,A,I0)') 'ERROR: rho_max_lanes list length (', n_found, &
@@ -122,6 +126,7 @@ program pde_driver
       write(*, '(A,I0,A,F6.3)') 'v_max (lane ', lane, ')   = ', params%v_max_lanes(lane)
     end do
   end if
+  write(*, '(A,F6.3)')  'v_limit          = ', params%v_limit
   write(*, '(A,F6.3)')  'rho_max          = ', params%rho_max
   write(*, '(A,F6.3)')  'rho_left_bc      = ', params%rho_left_bc
   write(*, '(A,F6.3)')  'rho_right_bc     = ', params%rho_right_bc
@@ -144,7 +149,7 @@ program pde_driver
   do lane = 1, params%n_lanes
     flow_history(lane, 1) = q_dispatch(state%density(lane, params%M), &
                               params%v_max_lanes(lane), params%rho_max_lanes(lane), &
-                              params%flux_type)
+                              params%v_limit, params%flux_type)
   end do
 
   ! ---------- time loop ----------
@@ -155,7 +160,7 @@ program pde_driver
     do lane = 1, params%n_lanes
       flow_history(lane, t + 1) = q_dispatch(state%density(lane, params%M), &
                                     params%v_max_lanes(lane), params%rho_max_lanes(lane), &
-                                    params%flux_type)
+                                    params%v_limit, params%flux_type)
     end do
 
     if (mod(t, 100) == 0) then
@@ -180,7 +185,6 @@ program pde_driver
 contains
 
   ! Parse a comma-separated string of reals into an array.
-  ! e.g. "1.0,1.5,2.0" -> vals=[1.0, 1.5, 2.0], n_found=3
   subroutine parse_real_list(str, vals, n_found)
     character(len=*), intent(in)    :: str
     real,             intent(inout) :: vals(:)
