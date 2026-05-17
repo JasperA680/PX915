@@ -27,5 +27,8 @@ __pycache__/
 *.py[cod]
 .ipynb_checkpoints/
 
+# Sphinx build output
+docs-sphinx/_build/
+
 # macOS
 .DS_Store
