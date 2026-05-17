@@ -11,7 +11,7 @@ contains
 
     subroutine run_simulation(L, n_steps, alpha, beta, history, density_history, current_history, total_exits)
         ! Run the 1D open boundary TASEP simulation for n_steps.
-        ! 
+        !
         ! Inputs:
         !   L                - length of road
         !   n_steps          - number of time steps
@@ -19,7 +19,7 @@ contains
         !   beta             - exit probability at site L
         !
         ! Outputs:
-        !   history          - lattice state at each timestep 
+        !   history          - lattice state at each timestep
         !                      history(i, t) = state of site i at time t
         !   density_history  - density at each timestep
         !   current_history  - number of particles that exited at each timestep
@@ -33,21 +33,26 @@ contains
         integer, intent(out) :: current_history(n_steps)
         integer, intent(out) :: total_exits
 
-        integer :: state(L)
+        integer :: state(L), old_state(L), new_state(L)
         integer :: step, exit_count
 
         ! start with an empty lattice
         call initialise_lattice(state, L)
         total_exits = 0
 
+        ! Persistent parallel region: thread team is created once and reused each step.
+        ! !$omp single handles serial boundary work; !$omp do parallelises the bulk loop.
+        !$omp parallel default(shared) private(step)
         do step = 1, n_steps
-            call tasep_step(state, L, alpha, beta, exit_count)
-
+            call tasep_step_omp(state, old_state, new_state, L, alpha, beta, exit_count)
+            !$omp single
             history(:, step) = state
             density_history(step) = compute_density(state, L)
             current_history(step) = exit_count
             total_exits = total_exits + exit_count
+            !$omp end single
         end do
+        !$omp end parallel
 
     end subroutine run_simulation
 
@@ -63,16 +68,17 @@ contains
         integer, intent(out) :: current_history(n_steps)
         integer, intent(out) :: total_exits
 
-        integer :: state(L)
+        integer :: state(L), old_state(L), new_state(L)
         integer :: step, rec, exit_count
 
         call initialise_lattice(state, L)
         total_exits = 0
         rec = 0
 
+        !$omp parallel default(shared) private(step)
         do step = 1, n_steps
-            call tasep_step(state, L, alpha, beta, exit_count)
-
+            call tasep_step_omp(state, old_state, new_state, L, alpha, beta, exit_count)
+            !$omp single
             if (mod(step - 1, record_every) == 0) then
                 rec = rec + 1
                 history(:, rec) = state
@@ -80,7 +86,9 @@ contains
             density_history(step) = compute_density(state, L)
             current_history(step) = exit_count
             total_exits = total_exits + exit_count
+            !$omp end single
         end do
+        !$omp end parallel
 
     end subroutine run_simulation_thin
 
@@ -91,7 +99,7 @@ contains
         real,    intent(in)  :: alpha, beta
         real,    intent(out) :: mean_density, mean_current
 
-        integer :: state(L)
+        integer :: state(L), old_state(L), new_state(L)
         integer :: step, exit_count
         integer :: bulk_lo, bulk_hi, bulk_L
         real    :: density_acc
@@ -104,17 +112,23 @@ contains
 
         call initialise_lattice(state, L)
 
+        !$omp parallel default(shared) private(step)
         do step = 1, n_burnin
-            call tasep_step(state, L, alpha, beta, exit_count)
+            call tasep_step_omp(state, old_state, new_state, L, alpha, beta, exit_count)
         end do
+        !$omp end parallel
 
         density_acc = 0.0
         current_acc = 0
+        !$omp parallel default(shared) private(step)
         do step = 1, n_measure
-            call tasep_step(state, L, alpha, beta, exit_count)
+            call tasep_step_omp(state, old_state, new_state, L, alpha, beta, exit_count)
+            !$omp single
             density_acc = density_acc + real(sum(state(bulk_lo:bulk_hi))) / real(bulk_L)
             current_acc = current_acc + exit_count
+            !$omp end single
         end do
+        !$omp end parallel
 
         mean_density = density_acc / real(n_measure)
         mean_current = real(current_acc) / real(n_measure)

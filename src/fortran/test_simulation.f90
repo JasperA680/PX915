@@ -1,6 +1,7 @@
 program test_simulation
     use simulation
     use tasep_io
+    use tasep_model, only: rng_init
     implicit none
 
     integer :: L, n_steps, nargs
@@ -33,6 +34,7 @@ program test_simulation
     allocate(density_history(n_steps))
     allocate(current_history(n_steps))
 
+    call rng_init(42)
     call run_simulation(L, n_steps, alpha, beta, history, density_history, current_history, total_exits)
 
     do step = 1, n_steps

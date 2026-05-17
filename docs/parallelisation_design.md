@@ -75,9 +75,20 @@ Add `-fopenmp` to `FFLAGS` and `OMP_NUM_THREADS=1` as the default in the `benchm
 
 ### Expected scaling
 
-Only useful for L large enough that bulk-loop work exceeds the snapshot copy + entry/exit serial code:
-- At L = 1000, bulk loop is ~10³ comparisons; copy is 4 kB. Speedup likely 2–3× on 4 threads.
-- At L = 5000, copy is 20 kB; speedup approaching the thread count, modulo memory bandwidth on a shared-memory machine.
+Only useful for L large enough that bulk-loop work exceeds the synchronisation overhead. Two implementation options were tried; both are in the codebase:
+
+**Option A — `!$omp parallel do` inside `tasep_step`** (what the design originally specified): creates a new thread team on every `tasep_step` call. Measured thread-team-creation cost ≈ 15 μs/step on Apple Silicon; at L=5000 serial compute is only ~6 μs/step → 3× slowdown.
+
+**Option B — persistent thread team** (current implementation): the time loop in `run_simulation*` / `measure_steady_state` is wrapped in `!$omp parallel`; `tasep_step_omp` uses `!$omp single` + `!$omp do` inside. Eliminates thread-creation overhead, but each `!$omp single ... !$omp end single` still carries an implicit barrier. With 4 barriers/step at ~10 μs each on macOS:
+
+| L | N | 1 thread | 2 threads | 4 threads |
+|---|---|---|---|---|
+| 5 000 | 100 000 | 0.62 s | 3.7 s | 4.4 s |
+| 5 000 | 1 000 000 | 6.2 s | ~30 s | 44 s |
+
+**Root cause**: Apple Silicon / gfortran OpenMP barrier latency ≈ 10 μs; barrier overhead (4 × 10 μs = 40 μs/step) exceeds per-step compute (6 μs at L=5000). Break-even on this hardware requires L ≳ 15 000.
+
+**On Linux clusters** barrier latency is typically 1–2 μs, giving break-even at L ≳ 2 000–5 000 (consistent with the original estimate). All correctness checks pass: ρ ≈ 0.6667, J ≈ 0.3333 for all L at 1, 2, and 4 threads (bit-exact match to serial at fixed seed).
 
 ### Verification
 
@@ -141,8 +152,9 @@ Common to OpenMP and MPI:
 
 ## Critical files (touched / to be touched)
 
-- [src/fortran/tasep.f90](../src/fortran/tasep.f90) — bulk loop, RNG calls (lines 78–84, 70, 88)
-- [src/fortran/simulation.f90](../src/fortran/simulation.f90) — `run_simulation`, history thinning hook (line 45)
+- [src/fortran/tasep.f90](../src/fortran/tasep.f90) — xoshiro128++ RNG (`rng_init`, `rng_real`, `splitmix32`); `tasep_step` with `!$omp parallel do`; `tasep_step_omp` with `!$omp single`+`!$omp do` for persistent-team use
+- [src/fortran/simulation.f90](../src/fortran/simulation.f90) — `run_simulation`, `run_simulation_thin`, `measure_steady_state` all use persistent `!$omp parallel` + `tasep_step_omp`
 - [src/fortran/io.f90](../src/fortran/io.f90) — `write_benchmark_netcdf` already added; may add parallel NetCDF helper later
-- [src/fortran/benchmark_tasep.f90](../src/fortran/benchmark_tasep.f90) — re-used to re-time after each step above
-- [Makefile](../Makefile) — `-fopenmp` flag; new `benchmark-omp` and `benchmark-mpi` targets later
+- [src/fortran/benchmark_tasep.f90](../src/fortran/benchmark_tasep.f90) — calls `rng_init(42)` at startup
+- [src/fortran/test_simulation.f90](../src/fortran/test_simulation.f90) — calls `rng_init(42)` at startup
+- [Makefile](../Makefile) — `-fopenmp` in `FFLAGS`; `make benchmark` pins `OMP_NUM_THREADS=1`; `make benchmark-omp` for multi-thread runs

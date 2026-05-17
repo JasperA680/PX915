@@ -4,6 +4,7 @@ program benchmark_tasep
     ! Produces data/output/benchmark.nc and prints a per-run summary.
     use simulation
     use tasep_io
+    use tasep_model, only: rng_init
     implicit none
 
     integer, parameter :: n_L     = 7
@@ -36,6 +37,7 @@ program benchmark_tasep
     wallclock = -1.0
 
     call system_clock(count_rate = count_rate)
+    call rng_init(42)
 
     ! --- Steady-state baselines ---
     ! n_burnin = min(L², 1 M) so the system is well-equilibrated before measuring.

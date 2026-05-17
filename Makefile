@@ -6,7 +6,7 @@ NC_FFLAGS := $(shell nf-config --fflags)
 NC_FLIBS   := $(shell nf-config --flibs) $(shell nc-config --libs)
 
 # Compiler flags
-FFLAGS = -Wall -O2 $(NC_FFLAGS)
+FFLAGS = -Wall -O2 -fopenmp $(NC_FFLAGS)
 
 # Directories
 SRC_DIR   = src/fortran
@@ -75,8 +75,13 @@ $(BENCH_EXE): $(MODEL_SRC) $(SIM_SRC) $(IO_SRC) $(BENCH_SRC)
 	mkdir -p $(BUILD_DIR)
 	$(FC) $(FFLAGS) $^ -o $@ $(NC_FLIBS)
 
-# Run benchmark sweep (writes data/output/benchmark.nc)
+# Run benchmark sweep at OMP_NUM_THREADS=1 — preserves the serial baseline in benchmark.nc
 benchmark: $(BENCH_EXE)
+	mkdir -p data/output
+	OMP_NUM_THREADS=1 ./$(BENCH_EXE)
+
+# Run benchmark with all available threads (override: make benchmark-omp OMP_NUM_THREADS=4)
+benchmark-omp: $(BENCH_EXE)
 	mkdir -p data/output
 	./$(BENCH_EXE)
 
