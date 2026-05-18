@@ -3,22 +3,29 @@ module network_simulation_mod
     ! Top-level driver for one network timestep and a multi-step run.
     !
     ! Per-timestep order of operations (parallel update):
-    !   1. snapshot_network  -- freeze all `old` arrays.
-    !   2. evaluate_junctions -- move holding-cell vehicles to destinations.
-    !   3. lane_internal_step -- bulk hops + open boundary inflow/outflow.
+    !   1. snapshot_network      -- freeze all `old` arrays.
+    !   2. apply_lane_changes    -- lateral lane changes (optional).
+    !      snapshot_network      -- re-freeze so junction/NS see post-LC state.
+    !   3. evaluate_junctions    -- move holding-cell vehicles to destinations.
+    !   4. lane_internal_step    -- bulk hops + open boundary inflow/outflow.
     !
-    ! This ordering ensures coherent parallel-update semantics:
-    !   * junction_step reads from `old` (pre-step state).
-    !   * lane_internal_step also reads from `old` for hop decisions.
-    !   * A vehicle placed at site 1 by the junction this step stays
-    !     there until the next step (it was absent in `old`).
-    !   * A vehicle that exits via the junction this step leaves a gap
-    !     at site L; the vehicle behind it cannot advance into that gap
-    !     this step (it sees site L occupied in `old`).
+    ! Lane changing (step 2) follows Rickert et al. (1996): it is a strict
+    ! parallel sub-step where all decisions are read from the pre-LC `old`
+    ! snapshot and results are written to `cells`.  Re-snapshotting before
+    ! the junction/NS step ensures those steps see the post-LC configuration.
+    !
+    ! Lane-change model constants (exported from lane_change_mod):
+    !   LC_DISABLED  (-1) -- no lane changes (default)
+    !   LC_SYMMETRIC  (0) -- symmetric model (T1+T2+T3+T4 for any move)
+    !   LC_ASYMMETRIC (1) -- asymmetric model (vehicles prefer rightmost lane)
+    !
+    ! network_step and run_network accept optional lc_model / lc_p_change
+    ! arguments; omitting them disables lane changing for back-compatibility.
     !--------------------------------------------------------------------
     use vehicle_mod
     use road_network_mod
     use junction_mod
+    use lane_change_mod
     implicit none
     private
 
@@ -26,12 +33,27 @@ module network_simulation_mod
     real,    parameter :: P_SLOW = 0.2   ! random deceleration probability
 
     public :: network_step, run_network
+    public :: LC_DISABLED, LC_SYMMETRIC, LC_ASYMMETRIC
 
 contains
 
-    subroutine network_step(net)
+    subroutine network_step(net, lc_model, lc_p_change)
         type(road_network_t), intent(inout) :: net
+        integer, optional,    intent(in)    :: lc_model
+        real,    optional,    intent(in)    :: lc_p_change
+        integer :: model_int
+        real    :: p_change_val
+
+        model_int    = LC_DISABLED
+        p_change_val = 1.0
+        if (present(lc_model))    model_int    = lc_model
+        if (present(lc_p_change)) p_change_val = lc_p_change
+
         call snapshot_network(net)
+        if (model_int /= LC_DISABLED) then
+            call apply_lane_changes(net, model_int, p_change_val)
+            call snapshot_network(net)   ! re-freeze with post-LC state
+        end if
         call evaluate_junctions(net)
         call lane_internal_step(net)
     end subroutine network_step
@@ -134,10 +156,12 @@ contains
     !-----------------------------------------------------------------
     ! Run the network for n_steps, returning per-road entry/exit counts.
     !-----------------------------------------------------------------
-    subroutine run_network(net, n_steps, entries, exits)
+    subroutine run_network(net, n_steps, entries, exits, lc_model, lc_p_change)
         type(road_network_t), intent(inout) :: net
         integer,              intent(in)    :: n_steps
         integer,              intent(out)   :: entries(:), exits(:)
+        integer, optional,    intent(in)    :: lc_model
+        real,    optional,    intent(in)    :: lc_p_change
         integer :: step, r, k, Lk
         integer :: road_count
 
@@ -146,7 +170,13 @@ contains
         exits   = 0
 
         do step = 1, n_steps
-            call network_step(net)
+            if (present(lc_model) .and. present(lc_p_change)) then
+                call network_step(net, lc_model, lc_p_change)
+            else if (present(lc_model)) then
+                call network_step(net, lc_model=lc_model)
+            else
+                call network_step(net)
+            end if
 
             do r = 1, road_count
                 do k = 1, size(net%roads(r)%lane)
