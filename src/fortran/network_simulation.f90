@@ -29,15 +29,16 @@ module network_simulation_mod
     implicit none
     private
 
-    public :: network_step, run_network
+    public :: network_step
     public :: LC_DISABLED, LC_SYMMETRIC, LC_ASYMMETRIC
 
 contains
 
-    subroutine network_step(net, lc_model, lc_p_change)
+    subroutine network_step(net, model, lc_model, lc_p_change)
         type(road_network_t), intent(inout) :: net
         integer, optional,    intent(in)    :: lc_model
         real,    optional,    intent(in)    :: lc_p_change
+        character(len=16) :: model
         integer :: model_int
         real    :: p_change_val
 
@@ -53,7 +54,15 @@ contains
         end if
         call evaluate_junctions(net)
 
-        call tasep_lane_step(net)
+        select case (trim(model))
+        case ('TASEP')
+            call tasep_lane_step(net)
+        case ('NS')
+            call NS_model_step(net)
+        case default                        ! Just default to NS model if input not recognised (could change to an error code or something?)
+            call NS_model_step(net)
+        end select
+
     end subroutine network_step
 
     !-----------------------------------------------------------------
@@ -129,51 +138,5 @@ contains
             end do
         end do
     end subroutine tasep_lane_step
-
-    !-----------------------------------------------------------------
-    ! Run the network for n_steps, returning per-road entry/exit counts.
-    ! Optional model argument ('NS' or 'TASEP') selects the lane step.
-    !-----------------------------------------------------------------
-    subroutine run_network(net, n_steps, entries, exits, lc_model, lc_p_change)
-        type(road_network_t), intent(inout) :: net
-        integer,              intent(in)    :: n_steps
-        integer,              intent(out)   :: entries(:), exits(:)
-        integer, optional,    intent(in)    :: lc_model
-        real,    optional,    intent(in)    :: lc_p_change
-        integer :: step, r, k, Lk
-        integer :: road_count
-
-        road_count = size(net%roads)
-        entries = 0
-        exits   = 0
-
-        do step = 1, n_steps
-            if (present(lc_model) .and. present(lc_p_change)) then
-                call network_step(net, lc_model, lc_p_change)
-            else if (present(lc_model)) then
-                call network_step(net, lc_model=lc_model)
-            else
-                call network_step(net)
-            end if
-
-            do r = 1, road_count
-                do k = 1, size(net%roads(r)%lane)
-                    if (net%roads(r)%lane(k)%open_in) then
-                        if (net%roads(r)%lane(k)%cells(1)%has_car .and. &
-                            .not. net%roads(r)%lane(k)%old(1)%has_car) then
-                            entries(r) = entries(r) + 1
-                        end if
-                    end if
-                    if (net%roads(r)%lane(k)%open_out) then
-                        Lk = net%roads(r)%lane(k)%length
-                        if (.not. net%roads(r)%lane(k)%cells(Lk)%has_car &
-                            .and. net%roads(r)%lane(k)%old(Lk)%has_car) then
-                            exits(r) = exits(r) + 1
-                        end if
-                    end if
-                end do
-            end do
-        end do
-    end subroutine run_network
 
 end module network_simulation_mod

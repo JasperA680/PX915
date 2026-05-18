@@ -39,6 +39,10 @@ program run_network
     integer, allocatable :: seed_arr(:)
     integer :: seed_size
 
+    ! LANE CHANGING PARAMETERS - CURRENTLY HARDCODED
+    integer, parameter   :: lane_change_model = -1           ! Defines what logic to use for lane changes: -1=DISABLED, 0=SYMMETRIC, 1=ASYMMETRIC
+    real,    parameter   :: lane_change_prob = 1             ! Probability a car will switch lanes, given it meets other requirements
+
     argc = command_argument_count()
     if (argc < 2) then
         write(*,*) "usage: run_network <config.json> <out.nc>"
