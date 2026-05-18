@@ -27,7 +27,7 @@ sys.path.insert(0, str(ROOT / "src" / "python"))
 
 import matplotlib.pyplot as plt
 from pde_runner import run_pde, load_pde_netcdf
-from visualisation import (
+from pde_visualisation import (
     plot_space_time_per_lane,
     plot_space_time_total,
     plot_lane_densities,

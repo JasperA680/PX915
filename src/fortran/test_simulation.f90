@@ -33,7 +33,9 @@ program test_simulation
     allocate(density_history(n_steps))
     allocate(current_history(n_steps))
 
-    call run_simulation(L, n_steps, alpha, beta, history, density_history, current_history, total_exits)
+    call run_simulation(L, n_steps, alpha, beta, &
+                        history, density_history, current_history, total_exits, &
+                        'TASEP')
 
     do step = 1, n_steps
         print *, "Step:", step

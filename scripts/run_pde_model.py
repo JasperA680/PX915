@@ -28,7 +28,7 @@ sys.path.insert(0, str(ROOT / 'src' / 'python'))
 
 import matplotlib.pyplot as plt
 from pde_runner import run_pde, load_pde_netcdf
-from visualisation import plot_pde_summary
+from pde_visualisation import plot_pde_summary
 
 DEFAULT_NC = ROOT / 'data' / 'output' / 'pde_simulation.nc'
 

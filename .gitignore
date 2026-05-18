@@ -14,6 +14,8 @@ build/
 # Simulation output
 data/output/*.nc
 data/output/*.txt
+data/output/gui/
+data/output/gui_smoke/
 
 # Generated plots
 plots/
