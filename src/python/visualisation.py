@@ -1,6 +1,9 @@
+from typing import Optional
+
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
+from matplotlib.collections import LineCollection
 
 
 def plot_spacetime(data, ax=None, title=None):
@@ -127,103 +130,270 @@ def plot_summary(data, save_path=None):
 
 
 # ---------------------------------------------------------------------------
-# PDE (LWR) visualisation
+# Network-aware plots (operate on either a NetworkResult or a NetworkSpec)
 # ---------------------------------------------------------------------------
 
-def plot_pde_spacetime(data, ax=None, title=None):
-    """Heatmap of ρ(x, t) — the primary visual diagnostic for the LWR PDE.
+def _config_layout(result):
+    """Pull (junctions, road_endpoints) dicts out of result.config['layout']."""
+    layout = (result.config or {}).get('layout', {})
+    j = {int(d['id']): (float(d['x']), float(d['y']))
+         for d in layout.get('junctions', [])}
+    r = {int(d['id']): (tuple(d['end_1']), tuple(d['end_2']))
+         for d in layout.get('roads', [])}
+    return j, r
 
-    data must be the dict returned by load_pde_netcdf:
-        density (n_steps+1, M), x (M,), time (n_steps+1,), attrs dict.
+
+def _draw_network(ax, road_endpoints, junction_xy,
+                  road_colours=None, road_label=None,
+                  open_endpoints=(), junction_annotations=None,
+                  title=None):
+    """Geometry helper used by both spec-preview and result-heatmap callers.
+
+    Args:
+        road_endpoints: dict[rid -> ((x1, y1), (x2, y2))]
+        junction_xy:    dict[jid -> (x, y)]
+        road_colours:   optional dict[rid -> float in [0,1]]; draws viridis overlay + colorbar
+        road_label:     callable rid -> str, OR None to default to 'R{rid}'
+        open_endpoints: iterable of (rid, end_index) (end_index 1 or 2) to mark with red squares
+        junction_annotations: optional dict[jid -> str], placed slightly above each junction
+        title:          axes title
+    Returns: (fig, ax)
     """
-    density = data['density']   # (time, x)
-    x       = data['x']
-    time    = data['time']
-    attrs   = data['attrs']
-    rho_max = float(attrs.get('rho_max', 1.0))
+    fig = ax.figure
+    rid_list = sorted(road_endpoints.keys())
+    segs = [list(road_endpoints[rid]) for rid in rid_list]
 
-    if ax is None:
-        fig, ax = plt.subplots(figsize=(10, 5))
+    if road_colours is not None:
+        colours = np.array([road_colours.get(rid, 0.0) for rid in rid_list])
+        lc = LineCollection(segs, cmap='viridis', linewidths=4)
+        lc.set_array(colours)
+        lc.set_clim(0, 1)
+        ax.add_collection(lc)
+        fig.colorbar(lc, ax=ax, label='occupancy', shrink=0.7)
     else:
-        fig = ax.figure
+        ax.add_collection(LineCollection(segs, colors='steelblue', linewidths=3))
 
-    im = ax.imshow(
-        density,
-        aspect='auto',
-        origin='lower',
-        cmap='viridis',
-        vmin=0,
-        vmax=rho_max,
-        extent=[float(x[0]), float(x[-1]), float(time[0]), float(time[-1])],
+    # Road midpoint labels.
+    label_fn = road_label or (lambda rid: f'R{rid}')
+    for rid in rid_list:
+        e1, e2 = road_endpoints[rid]
+        mx, my = 0.5 * (e1[0] + e2[0]), 0.5 * (e1[1] + e2[1])
+        ax.text(mx, my, label_fn(rid), fontsize=7, color='dimgray',
+                ha='center', va='center', backgroundcolor='white')
+
+    # Junction nodes.
+    if junction_xy:
+        ax.scatter([p[0] for p in junction_xy.values()],
+                   [p[1] for p in junction_xy.values()],
+                   s=160, c='black', zorder=3)
+        for jid, (x, y) in junction_xy.items():
+            ax.text(x, y, f'J{jid}', color='white', fontsize=8,
+                    ha='center', va='center', zorder=4, fontweight='bold')
+            if junction_annotations and jid in junction_annotations:
+                ax.text(x, y + 0.1, junction_annotations[jid],
+                        fontsize=6, color='darkblue', ha='center', va='bottom')
+
+    # Open-boundary markers.
+    for rid, end in open_endpoints:
+        if rid not in road_endpoints:
+            continue
+        e = road_endpoints[rid][end - 1]
+        ax.plot(*e, marker='s', color='tomato', markersize=8, zorder=5)
+
+    # Extent.
+    all_pts = [pt for ends in road_endpoints.values() for pt in ends] + list(junction_xy.values())
+    if all_pts:
+        xs = [p[0] for p in all_pts]; ys = [p[1] for p in all_pts]
+        pad = 0.3 * max(max(xs) - min(xs), max(ys) - min(ys), 1.0)
+        ax.set_xlim(min(xs) - pad, max(xs) + pad)
+        ax.set_ylim(min(ys) - pad, max(ys) + pad)
+    ax.set_aspect('equal')
+    ax.set_xticks([])
+    ax.set_yticks([])
+    if title is not None:
+        ax.set_title(title)
+    return fig, ax
+
+
+def _result_road_colours(result, t):
+    """Per-road mean occupancy at timestep t, keyed by road_id."""
+    out = {}
+    lane_road = result.lane_road_id
+    lane_len  = result.lane_length
+    occ_t = result.occupancy[t]
+    for rid in np.unique(lane_road):
+        lanes_of_r = np.where(lane_road == rid)[0]
+        total_cells = sum(int(lane_len[li]) for li in lanes_of_r)
+        total_occ = sum(int(occ_t[li, :lane_len[li]].sum()) for li in lanes_of_r)
+        out[int(rid)] = total_occ / max(1, total_cells)
+    return out
+
+
+def _result_open_endpoints(result):
+    """List of (rid, end) tuples (end 1 or 2) where the road has an open boundary."""
+    open_ids = set(int(r) for r in result.lane_road_id[result.lane_open_in.astype(bool)])
+    open_ids |= set(int(r) for r in result.lane_road_id[result.lane_open_out.astype(bool)])
+    out = []
+    for rid in sorted(open_ids):
+        if rid - 1 >= len(result.road_end_junction):
+            continue
+        ej = result.road_end_junction[rid - 1]
+        if ej[0] == 0:
+            out.append((rid, 1))
+        if ej[1] == 0:
+            out.append((rid, 2))
+    return out
+
+
+def plot_network_layout(result, ax=None, occupancy_t: Optional[int] = None,
+                        title: Optional[str] = None):
+    """Draw a NetworkResult's network: roads, junctions, open boundaries.
+
+    If `occupancy_t` is given, colour each road by its mean lane occupancy
+    at that timestep; otherwise the roads are drawn in a uniform colour.
+    """
+    if ax is None:
+        _, ax = plt.subplots(figsize=(7, 6))
+    j_xy, r_ends = _config_layout(result)
+    return _draw_network(
+        ax, road_endpoints=r_ends, junction_xy=j_xy,
+        road_colours=_result_road_colours(result, occupancy_t) if occupancy_t is not None else None,
+        open_endpoints=_result_open_endpoints(result),
+        title=title or f'Network layout  (t={occupancy_t if occupancy_t is not None else "—"})',
     )
-    plt.colorbar(im, ax=ax, label='Density ρ')
-    ax.set_xlabel('Position x')
-    ax.set_ylabel('Time t')
-    ic   = attrs.get('ic_type',   '')
-    flux = attrs.get('flux_type', '')
-    ax.set_title(title or f'Space-time density  (IC: {ic},  flux: {flux})')
-    return fig, ax
 
 
-def plot_pde_snapshots(data, n_snapshots=6, ax=None, title=None):
-    """Line plots of ρ(x) at n_snapshots evenly-spaced times."""
-    density = data['density']   # (time, x)
-    x       = data['x']
-    time    = data['time']
-    attrs   = data['attrs']
-    rho_max = float(attrs.get('rho_max', 1.0))
+def plot_network_spec(spec, layout, ax=None, alpha_beta_labels: bool = False,
+                      title: Optional[str] = None):
+    """Draw a NetworkSpec preview (no occupancy overlay).
 
+    Used by the GUI before a run completes.  Optionally annotates each road
+    with α/β values from its open lanes, and each 4-way junction with its
+    L/S/R turn probabilities.
+    """
     if ax is None:
-        fig, ax = plt.subplots(figsize=(8, 4))
+        _, ax = plt.subplots(figsize=(5, 5))
+
+    # Open endpoints: roads with end_junction == 0 and at least one open lane on that end.
+    open_eps = []
+    for r in spec.roads:
+        has_open = any(ln.open_in or ln.open_out for ln in r.lanes)
+        if not has_open:
+            continue
+        if r.end_junction[0] == 0:
+            open_eps.append((r.id, 1))
+        if r.end_junction[1] == 0:
+            open_eps.append((r.id, 2))
+
+    # Road labels: append α/β if requested and the road has open boundaries.
+    road_by_id = {r.id: r for r in spec.roads}
+    def _label(rid):
+        if not alpha_beta_labels:
+            return f'R{rid}'
+        r = road_by_id[rid]
+        a_set = any(ln.open_in for ln in r.lanes)
+        b_set = any(ln.open_out for ln in r.lanes)
+        if not (a_set or b_set):
+            return f'R{rid}'
+        bits = []
+        if a_set:
+            a = next(ln.alpha for ln in r.lanes if ln.open_in)
+            bits.append(f'α={a:.2f}')
+        if b_set:
+            b = next(ln.beta for ln in r.lanes if ln.open_out)
+            bits.append(f'β={b:.2f}')
+        return f'R{rid}\n' + ' '.join(bits)
+
+    # Junction annotations: only when there's a single junction.  When there
+    # are several with identical defaults the labels overlap each other.
+    annotations = {}
+    if alpha_beta_labels and len(spec.junctions) == 1:
+        j = spec.junctions[0]
+        if j.n_in == 4 and j.routes:
+            row = j.routes[0]
+            annotations[j.id] = f"L={row[1]:.2f} S={row[2]:.2f} R={row[3]:.2f}"
+
+    return _draw_network(
+        ax,
+        road_endpoints=layout.road_endpoints,
+        junction_xy=layout.junctions,
+        road_label=_label,
+        open_endpoints=open_eps,
+        junction_annotations=annotations,
+        title=title or 'Network preview',
+    )
+
+
+def plot_network_density(result, ax=None, title=None):
+    """Per-road density vs time.  One line per road."""
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(9, 4))
     else:
         fig = ax.figure
-
-    indices = np.linspace(0, len(time) - 1, n_snapshots, dtype=int)
-    colors  = plt.cm.plasma(np.linspace(0.15, 0.85, n_snapshots))
-
-    for idx, color in zip(indices, colors):
-        ax.plot(x, density[idx], color=color, linewidth=1.5,
-                label=f't = {float(time[idx]):.3f}')
-
-    ax.set_xlabel('Position x')
+    n_steps, n_roads = result.road_density.shape
+    t = np.arange(1, n_steps + 1)
+    for r in range(n_roads):
+        ax.plot(t, result.road_density[:, r], label=f'R{r + 1}', linewidth=1.0)
+    ax.set_xlabel('Time step')
     ax.set_ylabel('Density ρ')
-    ax.set_ylim(-0.02, rho_max * 1.08)
-    ax.legend(fontsize=8, loc='best')
-    ic = attrs.get('ic_type', '')
-    ax.set_title(title or f'Density snapshots  (IC: {ic})')
+    ax.set_ylim(0, 1)
+    ax.set_title(title or 'Per-road density vs time')
+    if n_roads <= 12:
+        ax.legend(fontsize=8, ncol=min(4, n_roads), loc='upper right')
     return fig, ax
 
 
-def plot_pde_flow(data, ax=None, title=None):
-    """Right-boundary flow q(ρ_M) vs time."""
-    flow  = data['flow']
-    time  = data['time']
-    attrs = data['attrs']
-    v_max     = float(attrs.get('v_max',   1.0))
-    rho_max   = float(attrs.get('rho_max', 1.0))
-    flux_type = str(attrs.get('flux_type', 'lf'))
-    if flux_type == 'newell':
-        # Newell: q_max = v_f * rho_c = v_f * w * rho_max / (v_f + w)
-        # NEWELL_W must match the Fortran constant in pde_flux.f90
-        NEWELL_W = 0.5
-        q_max = v_max * NEWELL_W * rho_max / (v_max + NEWELL_W)
-    else:
-        # Greenshields: q_max = v_max * rho_max / 4
-        q_max = v_max * rho_max / 4.0
-
+def plot_network_currents(result, ax=None, title=None):
+    """Per-road cumulative entries and exits."""
     if ax is None:
-        fig, ax = plt.subplots(figsize=(8, 3))
+        fig, ax = plt.subplots(figsize=(9, 4))
+    else:
+        fig = ax.figure
+    n_steps, n_roads = result.road_entries.shape
+    cum_in  = np.cumsum(result.road_entries, axis=0)
+    cum_out = np.cumsum(result.road_exits,   axis=0)
+    t = np.arange(1, n_steps + 1)
+    for r in range(n_roads):
+        if cum_in[-1, r] == 0 and cum_out[-1, r] == 0:
+            continue
+        ax.plot(t, cum_in[:, r],  linestyle='-',  linewidth=1.0, label=f'R{r + 1} in')
+        ax.plot(t, cum_out[:, r], linestyle='--', linewidth=1.0, label=f'R{r + 1} out')
+    ax.set_xlabel('Time step')
+    ax.set_ylabel('Cumulative count')
+    ax.set_title(title or 'Per-road cumulative entries (—) and exits (--)')
+    if n_roads <= 8:
+        ax.legend(fontsize=7, ncol=2, loc='upper left')
+    return fig, ax
+
+
+def plot_network_spacetime(result, road_id: int, ax=None, title=None):
+    """Concatenate all lanes of a single road as a space-time diagram."""
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(10, 4))
     else:
         fig = ax.figure
 
-    ax.plot(time, flow, color='steelblue', linewidth=1.2)
-    ax.axhline(q_max, color='tomato', linestyle='--', linewidth=1,
-               label=f'q_max = {q_max:.3f}')
-    ax.set_xlabel('Time t')
-    ax.set_ylabel('Flow q(ρ_M)')
-    ax.set_ylim(0, q_max * 1.25)
-    ax.set_title(title or 'Right-boundary flow vs time')
-    ax.legend(fontsize=9)
+    lane_idxs = np.where(result.lane_road_id == road_id)[0]
+    if len(lane_idxs) == 0:
+        ax.set_title(f'road {road_id}: not found')
+        return fig, ax
+
+    lane_lens = result.lane_length[lane_idxs]
+    n_steps   = result.occupancy.shape[0]
+    rows = []
+    for li, Lk in zip(lane_idxs, lane_lens):
+        rows.append(result.occupancy[:, li, :Lk])
+        rows.append(np.full((n_steps, 1), 0.5))   # separator stripe
+    if rows:
+        rows = rows[:-1]
+    stacked = np.concatenate(rows, axis=1).T   # (cell-across-lanes, time)
+
+    ax.imshow(stacked, aspect='auto', origin='lower', cmap='binary',
+              interpolation='nearest', vmin=0, vmax=1,
+              extent=[1, n_steps, 0, stacked.shape[0]])
+    ax.set_xlabel('Time step')
+    ax.set_ylabel('Cell (lanes stacked)')
+    ax.set_title(title or f'Road {road_id} space-time')
     return fig, ax
 
 
@@ -318,201 +488,30 @@ def plot_speed_limit_comparison(panel_datasets, save_path=None):
     return fig
 
 
-def plot_pde_summary(data, save_path=None):
-    """Three-panel PDE summary: space-time heatmap, density snapshots, boundary flow."""
-    attrs  = data['attrs']
-    M      = attrs.get('M',        '?')
-    n_steps = attrs.get('n_steps', '?')
-    ic     = attrs.get('ic_type',   '?')
-    flux   = attrs.get('flux_type', '?')
-    bc     = attrs.get('bc_type',   '?')
-
+def plot_network_summary(result, save_path: Optional[str] = None):
+    """Four-panel summary: layout, density, currents, space-time of road 1."""
     fig = plt.figure(figsize=(14, 9))
-    gs  = fig.add_gridspec(2, 2, hspace=0.45, wspace=0.38)
+    gs = fig.add_gridspec(2, 2, hspace=0.35, wspace=0.3)
 
-    ax_st   = fig.add_subplot(gs[0, :])
-    ax_snap = fig.add_subplot(gs[1, 0])
-    ax_flow = fig.add_subplot(gs[1, 1])
+    ax_layout = fig.add_subplot(gs[0, 0])
+    ax_dens   = fig.add_subplot(gs[0, 1])
+    ax_cur    = fig.add_subplot(gs[1, 0])
+    ax_st     = fig.add_subplot(gs[1, 1])
 
-    plot_pde_spacetime(data, ax=ax_st)
-    plot_pde_snapshots(data, ax=ax_snap)
-    plot_pde_flow(data, ax=ax_flow)
+    plot_network_layout(result, ax=ax_layout, occupancy_t=result.occupancy.shape[0] - 1,
+                        title='Final occupancy')
+    plot_network_density(result, ax=ax_dens)
+    plot_network_currents(result, ax=ax_cur)
+    plot_network_spacetime(result, road_id=int(result.lane_road_id[0]), ax=ax_st)
 
     fig.suptitle(
-        f'LWR PDE  M={M}  n_steps={n_steps}  IC={ic}  flux={flux}  BC={bc}',
+        f'Network simulation  n_steps={result.n_steps}  '
+        f'roads={result.road_density.shape[1]}  '
+        f'lanes={result.occupancy.shape[1]}',
         fontsize=12,
     )
 
     if save_path:
         fig.savefig(save_path, dpi=150, bbox_inches='tight')
         print(f'Saved to {save_path}')
-
     return fig
-
-
-def plot_pde_fundamental_diagram(rho, q, v_max=1.0, rho_max=1.0, ax=None, title=None):
-    """Flow q vs density ρ with the Greenshields analytical parabola overlaid.
-
-    Parameters
-    ----------
-    rho, q : array-like
-        Sweep points from ``pde_fundamental_diagram()``.
-    v_max, rho_max : float
-        Greenshields parameters for the analytical curve.
-    """
-    if ax is None:
-        fig, ax = plt.subplots(figsize=(6, 5))
-    else:
-        fig = ax.figure
-
-    rho_theory = np.linspace(0, rho_max, 300)
-    q_theory = v_max * rho_theory * (1.0 - rho_theory / rho_max)
-    q_max = v_max * rho_max / 4.0
-    rho_c = rho_max / 2.0
-
-    ax.plot(rho_theory, q_theory, 'k--', linewidth=1.5,
-            label='q(ρ) = v·ρ(1−ρ/ρ_max)  [Greenshields]')
-    ax.scatter(rho, q, s=25, color='steelblue', alpha=0.9, zorder=3,
-               label='PDE sweep')
-    ax.axvline(rho_c, color='grey', linestyle=':', linewidth=1,
-               label=f'ρ_c = {rho_c:.2f}')
-    ax.axhline(q_max, color='grey', linestyle=':', linewidth=1,
-               label=f'q_max = {q_max:.3f}')
-    ax.set_xlabel('Density ρ')
-    ax.set_ylabel('Flow q')
-    ax.set_xlim(0, rho_max)
-    ax.set_ylim(0, q_max * 1.3)
-    ax.set_title(title or 'PDE fundamental diagram')
-    ax.legend(fontsize=9)
-    return fig, ax
-
-
-# ---------------------------------------------------------------------------
-# Multi-lane PDE visualisation
-# ---------------------------------------------------------------------------
-
-def plot_space_time_per_lane(data, fig=None, title=None):
-    """N stacked heatmaps of ρ_lane(x, t), one subplot per lane.
-
-    Parameters
-    ----------
-    data : dict returned by load_pde_netcdf
-    """
-    density_pl = data["density_per_lane"]   # (time, lane, x)
-    n_lanes    = density_pl.shape[1]
-    x          = data["x"]
-    time       = data["time"]
-    attrs      = data["attrs"]
-    rho_max    = float(attrs.get("rho_max", 1.0))
-
-    if fig is None:
-        fig, axes = plt.subplots(n_lanes, 1, figsize=(10, 3 * n_lanes),
-                                 sharex=True, sharey=True)
-        if n_lanes == 1:
-            axes = [axes]
-    else:
-        axes = fig.get_axes()
-
-    for lane_idx in range(n_lanes):
-        ax = axes[lane_idx]
-        im = ax.imshow(
-            density_pl[:, lane_idx, :],
-            aspect='auto', origin='lower', cmap='viridis',
-            vmin=0, vmax=rho_max,
-            extent=[float(x[0]), float(x[-1]), float(time[0]), float(time[-1])],
-        )
-        plt.colorbar(im, ax=ax, label='ρ')
-        ax.set_ylabel(f'Time t\n(lane {lane_idx + 1})')
-
-    axes[-1].set_xlabel('Position x')
-    fig.suptitle(title or 'Space-time density per lane', y=1.01)
-    fig.tight_layout()
-    return fig, axes
-
-
-def plot_space_time_total(data, ax=None, title=None):
-    """Heatmap of total density ρ_tot(x, t) = Σ_lane ρ_lane(x, t)."""
-    from analysis import compute_total_density
-    rho_tot = compute_total_density(data)   # (time, x)
-    x       = data["x"]
-    time    = data["time"]
-    attrs   = data["attrs"]
-    n_lanes = data["n_lanes"]
-    rho_max = float(attrs.get("rho_max", 1.0)) * n_lanes
-
-    if ax is None:
-        fig, ax = plt.subplots(figsize=(10, 5))
-    else:
-        fig = ax.figure
-
-    im = ax.imshow(
-        rho_tot, aspect='auto', origin='lower', cmap='viridis',
-        vmin=0, vmax=rho_max,
-        extent=[float(x[0]), float(x[-1]), float(time[0]), float(time[-1])],
-    )
-    plt.colorbar(im, ax=ax, label='Total density ρ_tot')
-    ax.set_xlabel('Position x')
-    ax.set_ylabel('Time t')
-    ax.set_title(title or f'Total space-time density  ({n_lanes} lanes)')
-    return fig, ax
-
-
-def plot_lane_densities(data, x_pos=0.5, ax=None, title=None):
-    """Per-lane density vs time at a fixed spatial position x_pos.
-
-    Parameters
-    ----------
-    x_pos : float
-        Position along the road (in domain units). Nearest cell is used.
-    """
-    density_pl = data["density_per_lane"]   # (time, lane, x)
-    x          = data["x"]
-    time       = data["time"]
-    n_lanes    = data["n_lanes"]
-
-    i_cell = int(np.argmin(np.abs(x - x_pos)))
-
-    if ax is None:
-        fig, ax = plt.subplots(figsize=(8, 4))
-    else:
-        fig = ax.figure
-
-    colors = plt.cm.tab10(np.linspace(0, 0.9, n_lanes))
-    for lane_idx in range(n_lanes):
-        ax.plot(time, density_pl[:, lane_idx, i_cell],
-                color=colors[lane_idx], linewidth=1.4,
-                label=f'Lane {lane_idx + 1}')
-
-    ax.set_xlabel('Time t')
-    ax.set_ylabel('Density ρ')
-    ax.set_title(title or f'Lane densities at x ≈ {float(x[i_cell]):.3f}')
-    ax.legend(fontsize=9)
-    return fig, ax
-
-
-def plot_total_mass(data, ax=None, title=None):
-    """Mass deviation Δmass(t) = mass(t) − mass(0) vs time.
-
-    Plotting the deviation from initial mass rather than the absolute value
-    avoids matplotlib's offset notation and makes conservation quality
-    immediately readable: a perfect simulation gives a flat line at zero.
-    """
-    from analysis import compute_total_mass
-    mass      = compute_total_mass(data)
-    deviation = mass - mass[0]
-    time      = data["time"]
-
-    if ax is None:
-        fig, ax = plt.subplots(figsize=(8, 3))
-    else:
-        fig = ax.figure
-
-    variation = float(deviation.max() - deviation.min())
-    ax.plot(time, deviation, color='steelblue', linewidth=1.2)
-    ax.axhline(0.0, color='tomato', linestyle='--', linewidth=1,
-               label=f'zero (initial mass = {float(mass[0]):.4f}),  range = {variation:.2e}')
-    ax.set_xlabel('Time t')
-    ax.set_ylabel('Δ Total mass')
-    ax.set_title(title or 'Mass conservation check  (deviation from initial mass)')
-    ax.legend(fontsize=9)
-    return fig, ax

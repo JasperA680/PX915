@@ -21,7 +21,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / 'src' / 'python'))
 
 from analysis import pde_fundamental_diagram
-from visualisation import plot_pde_fundamental_diagram
+from pde_visualisation import plot_pde_fundamental_diagram
 import matplotlib.pyplot as plt
 
 
