@@ -23,6 +23,7 @@ PROGRESS.md
 
 # Python
 .venv/
+src/PX915env/
 __pycache__/
 *.py[cod]
 .ipynb_checkpoints/
