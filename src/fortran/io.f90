@@ -4,6 +4,7 @@ module tasep_io
     private
 
     public :: write_netcdf
+    public :: write_fundamental_diagram_netcdf
 
 contains
 
@@ -56,6 +57,62 @@ contains
         call check( nf90_close(ncid) )
 
     end subroutine write_netcdf
+
+    subroutine write_fundamental_diagram_netcdf(filename, L, n_points, n_burnin, n_measure, &
+                                                 fixed_beta, fixed_alpha, &
+                                                 alpha_param, alpha_rho, alpha_J, &
+                                                 beta_param,  beta_rho,  beta_J)
+        character(len=*), intent(in) :: filename
+        integer,          intent(in) :: L, n_points, n_burnin, n_measure
+        real,             intent(in) :: fixed_beta, fixed_alpha
+        real,             intent(in) :: alpha_param(n_points), alpha_rho(n_points), alpha_J(n_points)
+        real,             intent(in) :: beta_param(n_points),  beta_rho(n_points),  beta_J(n_points)
+
+        integer :: ncid, dim_pts
+        integer :: vid_ap, vid_ar, vid_aj, vid_bp, vid_br, vid_bj
+
+        call check( nf90_create(filename, NF90_CLOBBER, ncid) )
+
+        call check( nf90_def_dim(ncid, 'n_points', n_points, dim_pts) )
+
+        call check( nf90_put_att(ncid, NF90_GLOBAL, 'model',       '1D TASEP fundamental diagram') )
+        call check( nf90_put_att(ncid, NF90_GLOBAL, 'L',           L) )
+        call check( nf90_put_att(ncid, NF90_GLOBAL, 'n_points',    n_points) )
+        call check( nf90_put_att(ncid, NF90_GLOBAL, 'n_burnin',    n_burnin) )
+        call check( nf90_put_att(ncid, NF90_GLOBAL, 'n_measure',   n_measure) )
+        call check( nf90_put_att(ncid, NF90_GLOBAL, 'fixed_beta',  fixed_beta) )
+        call check( nf90_put_att(ncid, NF90_GLOBAL, 'fixed_alpha', fixed_alpha) )
+
+        call check( nf90_def_var(ncid, 'alpha_param', NF90_FLOAT, [dim_pts], vid_ap) )
+        call check( nf90_put_att(ncid, vid_ap, 'long_name', 'alpha values (beta sweep fixed at fixed_beta)') )
+
+        call check( nf90_def_var(ncid, 'alpha_rho', NF90_FLOAT, [dim_pts], vid_ar) )
+        call check( nf90_put_att(ncid, vid_ar, 'long_name', 'mean bulk density (alpha sweep)') )
+
+        call check( nf90_def_var(ncid, 'alpha_J', NF90_FLOAT, [dim_pts], vid_aj) )
+        call check( nf90_put_att(ncid, vid_aj, 'long_name', 'mean current (alpha sweep)') )
+
+        call check( nf90_def_var(ncid, 'beta_param', NF90_FLOAT, [dim_pts], vid_bp) )
+        call check( nf90_put_att(ncid, vid_bp, 'long_name', 'beta values (alpha sweep fixed at fixed_alpha)') )
+
+        call check( nf90_def_var(ncid, 'beta_rho', NF90_FLOAT, [dim_pts], vid_br) )
+        call check( nf90_put_att(ncid, vid_br, 'long_name', 'mean bulk density (beta sweep)') )
+
+        call check( nf90_def_var(ncid, 'beta_J', NF90_FLOAT, [dim_pts], vid_bj) )
+        call check( nf90_put_att(ncid, vid_bj, 'long_name', 'mean current (beta sweep)') )
+
+        call check( nf90_enddef(ncid) )
+
+        call check( nf90_put_var(ncid, vid_ap, alpha_param) )
+        call check( nf90_put_var(ncid, vid_ar, alpha_rho) )
+        call check( nf90_put_var(ncid, vid_aj, alpha_J) )
+        call check( nf90_put_var(ncid, vid_bp, beta_param) )
+        call check( nf90_put_var(ncid, vid_br, beta_rho) )
+        call check( nf90_put_var(ncid, vid_bj, beta_J) )
+
+        call check( nf90_close(ncid) )
+
+    end subroutine write_fundamental_diagram_netcdf
 
     subroutine check(status)
         integer, intent(in) :: status

@@ -88,14 +88,16 @@ def plot_fundamental_diagram(rho_vals, J_vals, ax=None, title=None):
         fig = ax.figure
 
     rho_theory = np.linspace(0, 1, 300)
-    ax.plot(rho_theory, rho_theory * (1 - rho_theory), 'k--',
-            linewidth=1.5, label='J = ρ(1−ρ)  theory')
+    J_theory = np.minimum(rho_theory, 1 - rho_theory)
+
+    ax.plot(rho_theory, J_theory, 'k--',
+        linewidth=1.5, label='J = min(ρ, 1−ρ) theory')
     ax.scatter(rho_vals, J_vals, s=18, color='steelblue',
                alpha=0.8, zorder=3, label='simulation')
     ax.set_xlabel('Density ρ')
     ax.set_ylabel('Current J')
     ax.set_xlim(0, 1)
-    ax.set_ylim(0, 0.30)
+    ax.set_ylim(0, 0.8)
     ax.set_title(title or 'Fundamental diagram')
     ax.legend(fontsize=9)
     return fig, ax

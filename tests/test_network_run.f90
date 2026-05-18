@@ -14,9 +14,6 @@ program test_network_run
     use network_simulation_mod
     implicit none
 
-    ! Select model: 'NS' or 'TASEP'
-    character(len=10), parameter :: MODEL = 'NS'
-
     integer, parameter :: L       = 20
     integer, parameter :: N_STEPS = 5000
     integer, parameter :: BURNIN  = 500
@@ -42,7 +39,7 @@ program test_network_run
     call init_crossroad(net, L, ALPHA, BETA, P_LEFT, P_RIGHT)
 
     do step = 1, BURNIN
-        call network_step(net, MODEL)
+        call network_step(net)
     end do
 
     n_before    = count_occupied_network(net)
@@ -51,7 +48,7 @@ program test_network_run
 
     !---- Step-by-step mass conservation --------------------------------
     do step = 1, N_STEPS
-        call network_step(net, MODEL)
+        call network_step(net)
 
         step_entries = 0
         step_exits   = 0

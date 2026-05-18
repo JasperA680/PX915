@@ -8,6 +8,7 @@ module simulation
     real,    parameter :: P_SLOW_NS = 0.2
 
     public :: run_simulation
+    public :: measure_steady_state
 
 contains
 
@@ -53,6 +54,43 @@ contains
         end do
 
     end subroutine run_simulation
+
+    subroutine measure_steady_state(L, n_burnin, n_measure, alpha, beta, mean_density, mean_current)
+        ! Run TASEP and return mean density and current over the measurement window.
+        ! Density is measured on the central L/4 slice to avoid boundary-layer bias.
+        integer, intent(in)  :: L, n_burnin, n_measure
+        real,    intent(in)  :: alpha, beta
+        real,    intent(out) :: mean_density, mean_current
+
+        type(cell) :: state(L)
+        integer :: step, exit_count
+        integer :: bulk_lo, bulk_hi, bulk_L
+        real    :: density_acc
+        integer :: current_acc
+
+        ! Central L/4 slice (matches Python: slice(3*L//8, 5*L//8))
+        bulk_lo = 3*L/8 + 1
+        bulk_hi = 5*L/8
+        bulk_L  = bulk_hi - bulk_lo + 1
+
+        call initialise_lattice(state, L)
+
+        do step = 1, n_burnin
+            call tasep_step(state, L, alpha, beta, exit_count)
+        end do
+
+        density_acc = 0.0
+        current_acc = 0
+        do step = 1, n_measure
+            call tasep_step(state, L, alpha, beta, exit_count)
+            density_acc = density_acc + compute_density(state(bulk_lo:bulk_hi), bulk_L)
+            current_acc = current_acc + exit_count
+        end do
+
+        mean_density = density_acc / real(n_measure)
+        mean_current = real(current_acc) / real(n_measure)
+
+    end subroutine measure_steady_state
 
     !-----------------------------------------------------------------
     ! One Nagel-Schreckenberg step on a standalone 1D open-boundary road.

@@ -53,12 +53,7 @@ contains
         end if
         call evaluate_junctions(net)
 
-        select case (trim(use_model))
-        case ('TASEP')
-            call tasep_lane_step(net)
-        case default
-            call NS_model_step(net)
-        end select
+        call tasep_lane_step(net)
     end subroutine network_step
 
     !-----------------------------------------------------------------

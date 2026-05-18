@@ -2,3 +2,4 @@ numpy>=2.0
 matplotlib>=3.9
 netCDF4>=1.7
 PyQt5>=5.15
+sphinx>=7.0

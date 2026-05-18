@@ -20,6 +20,9 @@ data/output/gui_smoke/
 # Generated plots
 plots/
 
+# Claude Progress
+PROGRESS.md
+
 # Python
 .venv/
 src/PX915env/

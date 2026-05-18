@@ -10,9 +10,6 @@ program test_ns_grid
     use network_simulation_mod
     implicit none
 
-    ! Select model: 'NS' or 'TASEP'
-    character(len=10), parameter :: MODEL = 'NS'
-
     integer, parameter :: L      = 12
     integer, parameter :: N_STEPS = 20
     integer, parameter :: V_MAX  = 5
@@ -23,11 +20,10 @@ program test_ns_grid
     call seed_rng(20260506)
     call init_crossroad(net, L, 0.99, 0.01, 0.99, 0.0)
 
-    print '(a,a)', 'Model: ', trim(MODEL)
     call print_state(net, 0)
 
     do step = 1, N_STEPS
-        call network_step(net, MODEL)
+        call network_step(net)
         call check_step(net, step)
         call print_state(net, step)
     end do
