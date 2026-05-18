@@ -46,6 +46,7 @@ PDE_RIGHT  ?= 0.9
 PDE_IC     ?= riemann
 PDE_FLUX   ?= lf
 PDE_BC     ?= open
+PDE_VLIMIT ?= 1.0
 PDE_OUT    ?= data/output/pde_simulation.nc
 
 # Default target: build all executables
@@ -78,7 +79,7 @@ run-fd: $(FUND_EXE)
 
 # Run PDE solver (params can be overridden: make run-pde PDE_M=400 PDE_IC=riemann)
 run-pde: $(PDE_EXE)
-	./$(PDE_EXE) $(PDE_M) $(PDE_STEPS) $(PDE_VMAX) $(PDE_RHOMAX) $(PDE_LEFT) $(PDE_RIGHT) $(PDE_IC) $(PDE_FLUX) $(PDE_BC) $(PDE_OUT)
+	./$(PDE_EXE) $(PDE_M) $(PDE_STEPS) $(PDE_VMAX) $(PDE_RHOMAX) $(PDE_LEFT) $(PDE_RIGHT) $(PDE_IC) $(PDE_FLUX) $(PDE_BC) $(PDE_VLIMIT) $(PDE_OUT)
 
 # Clean build files
 clean:
