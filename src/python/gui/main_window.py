@@ -248,7 +248,14 @@ class PDETab(QWidget):
         # --- Signals ---
         self.preset_combo.currentTextChanged.connect(self._on_preset_changed)
         self.param_form.params_changed.connect(self._on_form_edited)
+        self.param_form.params_changed.connect(self._sync_multilane_tabs)
         self.run_button.clicked.connect(self._on_run)
+
+        # Match the initial form state.
+        self._sync_multilane_tabs()
+
+    def _sync_multilane_tabs(self):
+        self.plot_panel.set_multilane_enabled(self.param_form.n_lanes.value() > 1)
 
     def _on_preset_changed(self, name: str):
         if not name:

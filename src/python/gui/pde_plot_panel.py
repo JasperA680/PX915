@@ -234,14 +234,18 @@ class PDEPlotPanel(QTabWidget):
         for i in _MULTILANE_TAB_INDICES:
             self.setTabEnabled(i, False)
 
+    def set_multilane_enabled(self, enabled: bool):
+        """Enable/disable the three multi-lane tabs without touching plot data."""
+        for i in _MULTILANE_TAB_INDICES:
+            self.setTabEnabled(i, enabled)
+
     def show_result(self, data: dict):
         self.tab_spacetime.set_data(data)
         self.tab_snapshots.set_data(data)
         self.tab_flow.set_data(data)
 
         multi = int(data.get("n_lanes", 1)) > 1
-        for i in _MULTILANE_TAB_INDICES:
-            self.setTabEnabled(i, multi)
+        self.set_multilane_enabled(multi)
         if multi:
             self.tab_per_lane.set_data(data)
             self.tab_lane_dens.set_data(data)
