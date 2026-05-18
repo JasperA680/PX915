@@ -15,16 +15,22 @@ from PyQt5.QtWidgets import (
 
 from python.road_network import PRESETS, NetworkSpec, LayoutSpec
 from python.io import load_network_netcdf
+from python.pde_runner import load_pde_netcdf
 
 from python.gui.param_form import ParamForm
 from python.gui.network_widget import NetworkWidget
 from python.gui.runner_thread import RunnerThread
 from python.gui.plot_panel import PlotPanel
+from python.gui.pde_param_form import PDEParamForm, PRESETS_ORDER, CUSTOM_LABEL
+from python.gui.pde_runner_thread import PDERunnerThread
+from python.gui.pde_plot_panel import PDEPlotPanel
 
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_BINARY = REPO_ROOT / "build" / "run_network"
 DEFAULT_OUTDIR = REPO_ROOT / "data" / "output" / "gui"
+DEFAULT_PDE_BINARY = REPO_ROOT / "build" / "pde_solver"
+DEFAULT_PDE_OUTDIR = REPO_ROOT / "data" / "output" / "gui_pde"
 
 # Available CA update rules.  Only "NS" is implemented physics-side; "TASEP"
 # is plumbed through the JSON config but the Fortran driver errors out on it.
@@ -184,26 +190,146 @@ class CATab(QWidget):
 
 
 class PDETab(QWidget):
-    """Placeholder for the PDE solver work (Week 4 of the SDP)."""
+    """LWR continuum PDE tab: presets + parameter form + plot panel."""
 
-    def __init__(self, parent=None):
+    log = pyqtSignal(str)
+    status = pyqtSignal(str)
+    progress = pyqtSignal(int)
+
+    def __init__(self, binary: Path, output_dir: Path, parent=None):
         super().__init__(parent)
+        self._binary = binary
+        self._output_dir = output_dir
+        self._runner: Optional[PDERunnerThread] = None
+        self._suppress_custom_revert = False
+
+        # --- Toolbar: preset + run ---
+        toolbar = QWidget()
+        toolbar_row = QHBoxLayout(toolbar)
+        toolbar_row.addWidget(QLabel("Preset:"))
+        self.preset_combo = QComboBox()
+        for name in PRESETS_ORDER:
+            self.preset_combo.addItem(name)
+        toolbar_row.addWidget(self.preset_combo)
+        toolbar_row.addSpacing(12)
+        self.run_button = QPushButton("Run")
+        self.run_button.setMinimumWidth(120)
+        toolbar_row.addWidget(self.run_button)
+        toolbar_row.addStretch(1)
+
+        # --- Left: parameter form in a capped scroll area ---
+        self.param_form = PDEParamForm()
+        form_scroll = QScrollArea()
+        form_scroll.setWidget(self.param_form)
+        form_scroll.setWidgetResizable(True)
+        form_scroll.setMaximumHeight(440)
+        form_scroll.setFrameShape(QScrollArea.NoFrame)
+
+        left = QWidget()
+        left_layout = QVBoxLayout(left)
+        left_layout.setContentsMargins(0, 0, 0, 0)
+        left_layout.addWidget(form_scroll)
+        left_layout.addStretch(1)
+
+        # --- Right: plot panel ---
+        self.plot_panel = PDEPlotPanel()
+
+        body = QSplitter(Qt.Horizontal)
+        body.addWidget(left)
+        body.addWidget(self.plot_panel)
+        body.setStretchFactor(0, 0)
+        body.setStretchFactor(1, 1)
+        body.setSizes([520, 800])
+
         outer = QVBoxLayout(self)
-        outer.addStretch(1)
-        msg = QLabel(
-            "PDE continuum solver: not yet implemented.\n\n"
-            "See Week 4 of the project plan in CLAUDE.md.\n"
-            "Comparison of PDE vs CA outputs will live in this tab."
+        outer.addWidget(toolbar)
+        outer.addWidget(body, stretch=1)
+
+        # --- Signals ---
+        self.preset_combo.currentTextChanged.connect(self._on_preset_changed)
+        self.param_form.params_changed.connect(self._on_form_edited)
+        self.run_button.clicked.connect(self._on_run)
+
+    def _on_preset_changed(self, name: str):
+        if not name:
+            return
+        self._suppress_custom_revert = True
+        try:
+            self.param_form.apply_preset(name)
+        finally:
+            self._suppress_custom_revert = False
+        if name != CUSTOM_LABEL:
+            self.status.emit(f"preset: {name}")
+
+    def _on_form_edited(self):
+        if self._suppress_custom_revert:
+            return
+        if self.preset_combo.currentText() != CUSTOM_LABEL:
+            self.preset_combo.blockSignals(True)
+            self.preset_combo.setCurrentText(CUSTOM_LABEL)
+            self.preset_combo.blockSignals(False)
+
+    def _on_run(self):
+        if not self._binary.exists():
+            self.log.emit(f"binary not found: {self._binary} — try `make pde`")
+            return
+        if self._runner is not None and self._runner.isRunning():
+            return
+        try:
+            params = self.param_form.pde_params()
+        except ValueError as exc:
+            self.log.emit(f"param error: {exc}")
+            return
+
+        preset = self.preset_combo.currentText() or "custom"
+        safe = preset.replace(" ", "_").replace(":", "").replace("/", "_").strip("()") or "custom"
+        out_path = self._output_dir / f"{safe}.nc"
+
+        self.run_button.setEnabled(False)
+        self.progress.emit(0)
+        self.status.emit(
+            f"running PDE preset={preset} M={params['M']} n_steps={params['n_steps']}..."
         )
-        msg.setAlignment(Qt.AlignCenter)
-        msg.setStyleSheet("color: gray; font-size: 12pt;")
-        msg.setObjectName("pde_placeholder")
-        outer.addWidget(msg)
-        outer.addStretch(1)
+        self.log.emit(f"--- run PDE preset={preset} ---")
+
+        self._runner = PDERunnerThread(params, out_path, self._binary, parent=self)
+        self._runner.progress.connect(self._on_runner_progress)
+        self._runner.finished_ok.connect(self._on_finished_ok)
+        self._runner.finished_error.connect(self._on_finished_error)
+        self._runner.start()
+
+    def _on_runner_progress(self, frac: float, msg: str):
+        if frac >= 0:
+            self.progress.emit(int(round(100 * frac)))
+        if msg:
+            self.log.emit(msg)
+
+    def _on_finished_ok(self, nc_path: str):
+        self.progress.emit(100)
+        self.status.emit(f"done — {nc_path}")
+        self.run_button.setEnabled(True)
+        self.log.emit(f"loaded {nc_path}")
+        try:
+            data = load_pde_netcdf(nc_path)
+            self.plot_panel.show_result(data)
+        except Exception as exc:
+            self.log.emit(f"plot error: {exc}")
+
+    def _on_finished_error(self, err: str):
+        self.status.emit("error")
+        self.run_button.setEnabled(True)
+        self.log.emit(f"ERROR: {err}")
+
+    def stop_running(self):
+        if self._runner is not None and self._runner.isRunning():
+            self._runner.requestInterruption()
+            self._runner.wait(2000)
 
 
 class MainWindow(QMainWindow):
-    def __init__(self, binary: os.PathLike = DEFAULT_BINARY, output_dir: os.PathLike = DEFAULT_OUTDIR):
+    def __init__(self, binary: os.PathLike = DEFAULT_BINARY, output_dir: os.PathLike = DEFAULT_OUTDIR,
+                 pde_binary: os.PathLike = DEFAULT_PDE_BINARY,
+                 pde_output_dir: os.PathLike = DEFAULT_PDE_OUTDIR):
         super().__init__()
         self.setWindowTitle("PX915 Traffic Network Simulator")
         self.resize(1400, 850)
@@ -211,7 +337,7 @@ class MainWindow(QMainWindow):
         # --- Top tabs: CA / PDE ---
         self.tabs = QTabWidget()
         self.ca_tab = CATab(Path(binary), Path(output_dir))
-        self.pde_tab = PDETab()
+        self.pde_tab = PDETab(Path(pde_binary), Path(pde_output_dir))
         self.tabs.addTab(self.ca_tab, "CA")
         self.tabs.addTab(self.pde_tab, "PDE")
         self.setCentralWidget(self.tabs)
@@ -244,8 +370,12 @@ class MainWindow(QMainWindow):
         self.ca_tab.log.connect(self.log.appendPlainText)
         self.ca_tab.status.connect(self.status_label.setText)
         self.ca_tab.progress.connect(self.progress.setValue)
+        self.pde_tab.log.connect(self.log.appendPlainText)
+        self.pde_tab.status.connect(self.status_label.setText)
+        self.pde_tab.progress.connect(self.progress.setValue)
 
     def closeEvent(self, event):
         # Ask each running tab to wind down before the window closes.
         self.ca_tab.stop_running()
+        self.pde_tab.stop_running()
         super().closeEvent(event)

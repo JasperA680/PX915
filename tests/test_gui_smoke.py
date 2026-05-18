@@ -20,10 +20,12 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src"))
 
-from PyQt5.QtWidgets import QApplication, QLabel
+from PyQt5.QtWidgets import QApplication, QLabel, QPushButton
 from PyQt5.QtCore import QEventLoop
 
 from python.gui.main_window import MainWindow
+from python.gui.pde_plot_panel import PDEPlotPanel
+from python.gui.pde_param_form import PDEParamForm
 
 
 BINARY = ROOT / "build" / "run_network"
@@ -81,11 +83,20 @@ def main():
     assert win.tabs.tabText(0) == "CA"
     assert win.tabs.tabText(1) == "PDE"
 
-    # PDE tab carries its placeholder label.
+    # PDE tab is wired up: form, plot panel, and Run button present.
     win.tabs.setCurrentIndex(1)
-    labels = win.pde_tab.findChildren(QLabel)
-    assert any("not yet implemented" in lbl.text() for lbl in labels), \
-        "PDE placeholder label missing"
+    assert isinstance(win.pde_tab.param_form, PDEParamForm), \
+        "PDE tab missing PDEParamForm"
+    assert isinstance(win.pde_tab.plot_panel, PDEPlotPanel), \
+        "PDE tab missing PDEPlotPanel"
+    assert win.pde_tab.run_button.text() == "Run", \
+        "PDE tab missing Run button"
+    assert win.pde_tab.plot_panel.count() == 6, \
+        f"PDE plot panel should have 6 tabs, got {win.pde_tab.plot_panel.count()}"
+    # Multi-lane-only tabs (3, 4, 5) start disabled.
+    for i in (3, 4, 5):
+        assert not win.pde_tab.plot_panel.isTabEnabled(i), \
+            f"PDE plot tab {i} should be disabled before a run"
     print("--- PDE tab: PASS ---")
     win.tabs.setCurrentIndex(0)
 
