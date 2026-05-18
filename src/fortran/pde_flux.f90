@@ -117,8 +117,7 @@ contains
     ! The Lax-Friedrichs flux averages the physical fluxes on the left and
     ! right states and adds numerical diffusion:
     !
-    !   F_LF = 0.5 * (q(rho_L) + q(rho_R))
-    !          - (dx / (2*dt)) * (rho_R - rho_L)
+    !   F_LF = 0.5 * (q(rho_L) + q(rho_R)) - (dx / (2*dt)) * (rho_R - rho_L)
     !
     ! This flux is robust and useful for debugging, but more diffusive than
     ! the Godunov flux. The speed-limited q is used when v_limit < v_max.

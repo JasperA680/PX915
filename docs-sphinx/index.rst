@@ -15,6 +15,17 @@ numerical flux functions used by the PDE traffic-flow solver.
 
 .. f:autosrcfile:: pde_flux.f90
 
+Fortran PDE solver module
+-------------------------
+
+The ``pde_solver`` module contains the main finite-volume PDE solver, including
+
+parameter setup, state initialisation, time stepping, adaptive time-step
+
+selection, finalisation and NetCDF output.
+
+.. f:autosrcfile:: pde_module.f90
+
 
 .. toctree::
    :maxdepth: 2

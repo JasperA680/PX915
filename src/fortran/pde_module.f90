@@ -125,10 +125,21 @@ contains
 
 
   subroutine pde_initialise(state, params)
-    type(pde_state_t),  intent(out) :: state
-    type(pde_params_t), intent(in)  :: params
-    integer :: lane, i, M
-    real    :: x, x_split, sigma
+    ! Allocate and initialise the PDE state.
+    !
+    ! The density field is initialised independently for each lane according to 
+    ! params%ic_type. Supported initial conditions are constant, riemann, gaussian,
+    ! sine and staggered. The ghost cel and flux arrays are allocated but are 
+    ! populated later during pde_step.
+    type(pde_state_t),  intent(out) :: state   ! Simulation state to allocate and initialise.
+    type(pde_params_t), intent(in)  :: params  ! Solver parameters defining grid, lanes and initial condition.
+    
+    integer :: lane     ! Lane index.
+    integer :: i        ! Spatial cell index.
+    integer :: M        ! Number of physical spatial cells.
+    real    :: x        ! Cell centre coordinate.
+    real    :: x_split  ! Interface location for the Riemann initial condition.
+    real    :: sigma    ! Width parameter for the Gaussian initial condition.
 
     M = params%M
     state%t_current = 0.0
@@ -174,7 +185,7 @@ contains
               * sin(2.0 * PI * x / params%domain_length)
         end do
 
-      ! Odd lanes start at rho_left_bc, even lanes at rho_right_bc.
+      
       case ('staggered')
         if (mod(lane, 2) == 1) then
           state%density(lane, :) = params%rho_left_bc
@@ -190,18 +201,27 @@ contains
   end subroutine pde_initialise
 
 
-  ! Advance one step: per-lane longitudinal FV update, then conservative
-  ! lateral lane-change source terms, then optional sponge damping.
   subroutine pde_step(state, params)
-    type(pde_state_t),  intent(inout) :: state
-    type(pde_params_t), intent(in)    :: params
-    integer :: lane, i, M
-    real    :: j_real, sigma_j, rho_new
-    real, allocatable :: source(:,:)
+    ! Advance the PDE state by one time step.
+    !
+    ! The update has three stages. First, each lane is advanced using a 
+    ! longitudinal finite volume update. Second, conservative lane change source
+    ! terms are applied when lane changing is enabled. Third, an optional sponge
+    ! boundary layer damps densities near the right boundary.
+    type(pde_state_t),  intent(inout) :: state    ! Simulation state to update in place.
+    type(pde_params_t), intent(in)    :: params   ! Solver parameters for the update.
+
+    integer :: lane     ! Lane index
+    integer :: i        ! Spatial cell or interface index.
+    integer :: M        ! Number of physical spatial cells.
+    real    :: j_real   ! Normalised index inside the sponge layer.
+    real    :: sigma_j  ! Sponge-layer damping profile value.
+    real    :: rho_new  ! Clipped density after applying source terms.
+    real, allocatable :: source(:,:) ! Lane change source terms, shape (n_lanes, M)
 
     M = params%M
 
-    ! --- Longitudinal finite-volume update per lane ---
+    
     do lane = 1, params%n_lanes
 
       state%rho_ext(lane, 1:M) = state%density(lane, 1:M)
@@ -214,7 +234,7 @@ contains
         state%rho_ext(lane, M+1) = params%rho_right_bc_lanes(lane)
       end if
 
-      ! Godunov (Greenshields or Newell via dispatch); LF (incl. newell_lf) falls through.
+      
       if (trim(params%flux_type) == 'godunov' .or. trim(params%flux_type) == 'newell') then
         do i = 0, M
           state%flux(lane, i) = godunov_dispatch( &
@@ -238,7 +258,7 @@ contains
 
     end do
 
-    ! --- Conservative lane-change source terms ---
+    
     if (params%lane_change_rate > 0.0 .and. params%n_lanes > 1) then
       allocate(source(params%n_lanes, M))
       call compute_lane_change_sources( &
@@ -261,7 +281,7 @@ contains
       deallocate(source)
     end if
 
-    ! --- Sponge boundary layer (right side) per lane ---
+    
     if (trim(params%bc_type) == 'sponge') then
       do lane = 1, params%n_lanes
         do i = 1, params%n_sponge
@@ -281,24 +301,37 @@ contains
 
 
   subroutine pde_finalise(state)
+    ! Deallocate arrays owned by a PDE state.
+    !
+    ! This routine realeses the density, ghost cell and flux arrays if they are
+    ! currently allocated. It is safe to call even if some arrays are already 
+    ! deallocated.
     type(pde_state_t), intent(inout) :: state
     if (allocated(state%density)) deallocate(state%density)
     if (allocated(state%rho_ext)) deallocate(state%rho_ext)
     if (allocated(state%flux))    deallocate(state%flux)
   end subroutine pde_finalise
 
-
-  ! CFL-based adaptive dt — takes the maximum wave speed over all lanes.
-  ! Uses index() for newell check so 'newell_lf' also routes to Newell dq/dρ.
   subroutine compute_dt(state, params, dt_out)
-    type(pde_state_t),  intent(in)  :: state
-    type(pde_params_t), intent(in)  :: params
-    real,               intent(out) :: dt_out
-    real    :: max_speed, v_max_global, dt_conservative, lane_speed
-    integer :: lane
+    ! Compute an adaptive timestep from a CFL condition.
+    !
+    ! The time step is chosen from the largest characteristic speed over all lanes.
+    ! A conservative upper bound based on the global maximum speed is also applied.
+    ! This avoids overly large time steps when the local characteristic speed is 
+    ! close to zero.
+    type(pde_state_t),  intent(in)  :: state   ! Current simulation state.
+    type(pde_params_t), intent(in)  :: params  ! Solver parameters and CFL time step bound.
+    real,               intent(out) :: dt_out  ! Computed time step.
+
+    real    :: max_speed          ! Maximum absolute characteristic speed over all lanes.
+    real    :: v_max_global       ! Largest lane maximum velocity.
+    real    :: dt_conservative    ! Conservative CFL time step bound.
+    real    :: lane_speed         ! Maximum absolute characteristic speed in one lane.
+    integer :: lane               ! Lane index.
 
     max_speed    = 0.0
     v_max_global = 0.0
+
     do lane = 1, params%n_lanes
       if (index(trim(params%flux_type), 'newell') > 0) then
         lane_speed = maxval(abs(dq_drho_newell(state%density(lane,:), &
@@ -311,8 +344,8 @@ contains
       if (params%v_max_lanes(lane) > v_max_global) v_max_global = params%v_max_lanes(lane)
     end do
 
-    ! v_limit ≤ v_max, so min(..., v_limit) can only tighten or equal the bound.
     dt_conservative = params%cfl_number * params%dx / min(v_max_global, params%v_limit)
+
     if (max_speed < 1.0e-10) then
       dt_out = dt_conservative
     else
@@ -321,25 +354,39 @@ contains
   end subroutine compute_dt
 
 
-  ! Write simulation output to NetCDF.
-  !
-  ! density_history(n_lanes, M, n_steps+1): Fortran lane-major storage.
-  ! NetCDF dims [lane_dimid, x_dimid, time_dimid] -> Python reads (time, x, lane).
-  ! pde_runner.load_pde_netcdf transposes that to (time, lane, x).
-  !
-  ! flow_history(n_lanes, n_steps+1): right-boundary flow per lane per step.
-  ! flow_total is the lane sum, stored as (time,) for backward compat.
   subroutine write_pde_netcdf(filename, params, density_history, flow_history)
-    character(len=*),   intent(in) :: filename
-    type(pde_params_t), intent(in) :: params
-    real,               intent(in) :: density_history(:,:,:)  ! (n_lanes, M, n_steps+1)
-    real,               intent(in) :: flow_history(:,:)       ! (n_lanes, n_steps+1)
+    ! Write PDE simulation output to a NetCDF file.
+    !
+    ! The density history is expected in Fortran oder with shape 
+    ! (n_lanes, M, n_steps+1). The NetCDF variable is written with dimensions 
+    ! (lane, x, time). Python netCDF4 reads this as (time, x, lane) and the 
+    ! project Python loader transposes it to (time, lane, x).
+    !
+    ! The routine also writes lane-resolved flow, total flow, coordinate arrays
+    ! and global metadata describing the simulaiton parameters.
+    character(len=*),   intent(in) :: filename                ! Output NetCDF filenames.
+    type(pde_params_t), intent(in) :: params                  ! Solver parameters to store as metadata.
+    real,               intent(in) :: density_history(:,:,:)  ! Density history, shape (n_lanes, M, n_steps+1)
+    real,               intent(in) :: flow_history(:,:)       ! Lane resolved flow history, shape (n_lanes, n_steps+1)
 
-    integer :: ncid, time_dimid, x_dimid, lane_dimid
-    integer :: density_varid, flow_varid, flow_total_varid
-    integer :: x_varid, time_varid, lane_varid
-    integer :: i, n_times, M, n_lanes_out
-    real, allocatable :: x_coord(:), time_coord(:), lane_coord(:), flow_total(:)
+    integer :: ncid                          ! NetCDF file ID.
+    integer :: time_dimid                    ! NetCDF dimension identifier for time.
+    integer :: x_dimid                       ! NetCDF dimension identifier for x.
+    integer :: lane_dimid                    ! NetCDF dimension identifier for lane.
+    integer :: density_varid                 ! NetCDF variable identifier for density.
+    integer :: flow_varid                    ! NetCDF variable identifier for lane resolved flow.
+    integer :: flow_total_varid              ! NetCDF variable identifier for total flow.
+    integer :: x_varid                       ! NetCDF variable identifier for x coordinate.
+    integer :: time_varid                    ! NetCDF variable identifier for time coordinate.
+    integer :: lane_varid                    ! NetCDF variable identifier for lane coordinate.
+    integer :: i                             ! Loop index.
+    integer :: n_time                        ! Number of time steps in the history arrays.
+    integer :: M                             ! Number of physical spatial cells.
+    integer :: n_lanes_out                   ! Number of lanes written to file.
+    real, allocatable :: x_coord(:)          ! cell centre x coordinates, shape (M)
+    real, allocatable :: time_coord(:)       ! output time coordinates, shape (n_times).
+    real, allocatable :: lane_coord(:)       ! lane coordinates, shape (n_lanes_out).
+    real, allocatable :: flow_total(:)       ! Total flow history, shape (n_times).
 
     n_lanes_out = size(density_history, 1)
     M           = size(density_history, 2)
@@ -409,6 +456,11 @@ contains
 
 
   subroutine nc_check(status)
+    ! Check a NetCDF status code and stop if error occurred.
+    !
+    ! This internal helper keeps NetCDF error handling concise. If status is not 
+    ! nf90_noerr, the corresponding NetCDF error string is printed and execution
+    ! stops.
     integer, intent(in) :: status
     if (status /= nf90_noerr) then
       write(*, '(A,A)') 'NetCDF error: ', trim(nf90_strerror(status))
