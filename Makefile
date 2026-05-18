@@ -25,9 +25,11 @@ NETWORK_INIT_SRC = $(SRC_DIR)/network_init.f90
 
 NS_MODEL_SRC     = $(SRC_DIR)/NS_model.f90
 JUNCTION_SRC     = $(SRC_DIR)/junction.f90
+LANE_CHANGE_SRC  = $(SRC_DIR)/lane_change.f90
 NET_SIM_SRC      = $(SRC_DIR)/network_simulation.f90
 
-NETWORK_LIB_SRC = $(VEHICLE_SRC) $(NETWORK_SRC) $(NS_MODEL_SRC) $(NETWORK_INIT_SRC) $(JUNCTION_SRC) $(NET_SIM_SRC)
+NETWORK_LIB_SRC = $(VEHICLE_SRC) $(NETWORK_SRC) $(NETWORK_INIT_SRC) \
+                  $(LANE_CHANGE_SRC) $(JUNCTION_SRC) $(NET_SIM_SRC)
 
 # Executables
 TEST_EXE              = $(BUILD_DIR)/test_simulation
@@ -37,10 +39,10 @@ TEST_JUNCTION_EXE     = $(BUILD_DIR)/test_junction
 TEST_NETWORK_RUN_EXE  = $(BUILD_DIR)/test_network_run
 TEST_NS_GRID_EXE      = $(BUILD_DIR)/test_ns_grid
 TEST_NS_PERIODIC_EXE  = $(BUILD_DIR)/test_ns_periodic
-TEST_T_JUNCTION_EXE   = $(BUILD_DIR)/test_t_junction
+TEST_LANE_CHANGE_EXE  = $(BUILD_DIR)/test_lane_change
 
 # Default target
-all: test test_types test_init_crossroad test_junction test_network_run test_ns_grid test_ns_periodic test_t_junction
+all: test test_types test_init_crossroad test_junction test_network_run test_ns_grid test_ns_periodic test_lane_change
 
 # Build existing test program
 test: $(TEST_EXE)
@@ -117,15 +119,15 @@ $(TEST_NS_PERIODIC_EXE): $(VEHICLE_SRC) $(NETWORK_SRC) tests/test_ns_periodic.f9
 run_test_ns_periodic: test_ns_periodic
 	./$(TEST_NS_PERIODIC_EXE)
 
-# T-junction test
-test_t_junction: $(TEST_T_JUNCTION_EXE)
+# Lane-change unit/integration tests
+test_lane_change: $(TEST_LANE_CHANGE_EXE)
 
-$(TEST_T_JUNCTION_EXE): $(NETWORK_LIB_SRC) tests/test_t_junction.f90
+$(TEST_LANE_CHANGE_EXE): $(NETWORK_LIB_SRC) tests/test_lane_change.f90
 	mkdir -p $(BUILD_DIR)
 	$(FC) $(FFLAGS) -J$(BUILD_DIR) $^ -o $@
 
-run_test_t_junction: test_t_junction
-	./$(TEST_T_JUNCTION_EXE)
+run_test_lane_change: test_lane_change
+	./$(TEST_LANE_CHANGE_EXE)
 
 # Clean build files
 clean:
