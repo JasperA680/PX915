@@ -25,7 +25,9 @@ VEHICLE_SRC      = $(SRC_DIR)/vehicle.f90
 NETWORK_SRC      = $(SRC_DIR)/road_network.f90
 NETWORK_INIT_SRC = $(SRC_DIR)/network_init.f90
 
+NS_MODEL_SRC     = $(SRC_DIR)/NS_model.f90
 JUNCTION_SRC     = $(SRC_DIR)/junction.f90
+LANE_CHANGE_SRC  = $(SRC_DIR)/lane_change.f90
 NET_SIM_SRC      = $(SRC_DIR)/network_simulation.f90
 
 # Network builder + JSON config + NetCDF writer + driver (Python frontend integration).
@@ -34,7 +36,8 @@ JSON_CONFIG_SRC     = $(SRC_DIR)/json_config.f90
 NETWORK_IO_SRC      = $(SRC_DIR)/network_io.f90
 RUN_NETWORK_SRC     = $(SRC_DIR)/run_network.f90
 
-NETWORK_LIB_SRC = $(VEHICLE_SRC) $(NETWORK_SRC) $(NETWORK_INIT_SRC) $(JUNCTION_SRC) $(NET_SIM_SRC)
+NETWORK_LIB_SRC = $(VEHICLE_SRC) $(NETWORK_SRC) $(NETWORK_INIT_SRC) \
+                  $(LANE_CHANGE_SRC) $(JUNCTION_SRC) $(NET_SIM_SRC)
 
 # Executables
 TEST_EXE              = $(BUILD_DIR)/test_simulation
@@ -45,9 +48,10 @@ TEST_NETWORK_RUN_EXE  = $(BUILD_DIR)/test_network_run
 TEST_NS_GRID_EXE      = $(BUILD_DIR)/test_ns_grid
 TEST_NS_PERIODIC_EXE  = $(BUILD_DIR)/test_ns_periodic
 RUN_NETWORK_EXE       = $(BUILD_DIR)/run_network
+TEST_LANE_CHANGE_EXE  = $(BUILD_DIR)/test_lane_change
 
 # Default target
-all: test test_types test_init_crossroad test_junction test_network_run test_ns_grid test_ns_periodic
+all: test test_types test_init_crossroad test_junction test_network_run test_ns_grid test_ns_periodic test_lane_change
 
 # Build existing test program
 test: $(TEST_EXE)
@@ -130,6 +134,16 @@ run_network: $(RUN_NETWORK_EXE)
 $(RUN_NETWORK_EXE): $(NETWORK_LIB_SRC) $(NETWORK_BUILDER_SRC) $(JSON_CONFIG_SRC) $(NETWORK_IO_SRC) $(RUN_NETWORK_SRC)
 	mkdir -p $(BUILD_DIR)
 	$(FC) $(FFLAGS) -J$(BUILD_DIR) $^ -o $@ $(NC_FLIBS)
+
+# Lane-change unit/integration tests
+test_lane_change: $(TEST_LANE_CHANGE_EXE)
+
+$(TEST_LANE_CHANGE_EXE): $(NETWORK_LIB_SRC) tests/test_lane_change.f90
+	mkdir -p $(BUILD_DIR)
+	$(FC) $(FFLAGS) -J$(BUILD_DIR) $^ -o $@
+
+run_test_lane_change: test_lane_change
+	./$(TEST_LANE_CHANGE_EXE)
 
 # Clean build files
 clean:
