@@ -33,7 +33,7 @@ def plot_pde_spacetime(data, ax=None, title=None):
         vmax=rho_max,
         extent=[float(x[0]), float(x[-1]), float(time[0]), float(time[-1])],
     )
-    plt.colorbar(im, ax=ax, label='Density ρ')
+    fig.colorbar(im, ax=ax, label='Density ρ')
     ax.set_xlabel('Position x')
     ax.set_ylabel('Time t')
     ic   = attrs.get('ic_type',   '')
@@ -207,7 +207,7 @@ def plot_space_time_per_lane(data, fig=None, title=None):
             vmin=0, vmax=rho_max,
             extent=[float(x[0]), float(x[-1]), float(time[0]), float(time[-1])],
         )
-        plt.colorbar(im, ax=ax, label='ρ')
+        fig.colorbar(im, ax=ax, label='ρ')
         ax.set_ylabel(f'Time t\n(lane {lane_idx + 1})')
 
     axes[-1].set_xlabel('Position x')
@@ -236,7 +236,7 @@ def plot_space_time_total(data, ax=None, title=None):
         vmin=0, vmax=rho_max,
         extent=[float(x[0]), float(x[-1]), float(time[0]), float(time[-1])],
     )
-    plt.colorbar(im, ax=ax, label='Total density ρ_tot')
+    fig.colorbar(im, ax=ax, label='Total density ρ_tot')
     ax.set_xlabel('Position x')
     ax.set_ylabel('Time t')
     ax.set_title(title or f'Total space-time density  ({n_lanes} lanes)')
