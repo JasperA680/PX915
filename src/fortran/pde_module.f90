@@ -1,68 +1,109 @@
-! pde_module.f90 — LWR PDE solver, N-lane extension of the single-lane solver.
+! pde_module.f90 -- LWR PDE solver with an N-lane extension.
 !
-! Array convention (lane-major, Fortran column-major):
-!   state%density(lane, i)              lane index first, spatial cell second
-!   density_history(n_lanes, M, n_steps+1)   Fortran storage: (lane, x, time)
+! Array convention:
+!   state%density(lane, i) stores density with lane index first and spatial cell second.
+!   density_history(n_lanes, M, n_steps+1) stores lane, space and time in Fortran order.
 !
-! NetCDF storage: dimensions [lane_dimid, x_dimid, time_dimid] (Fortran order).
-! Python (netCDF4) reads in reversed order -> shape (time, x, lane).
-! load_pde_netcdf in pde_runner.py transposes this to (time, lane, x).
+! NetCDF convention:
+!   The NetCDF dimensions are written as lane, x and time. Python netCDF4 reads this in
+!   reversed order, giving shape (time, x, lane). The Python loading routines transpose
+!   this to (time, lane, x).
 !
-! Backward compatibility: n_lanes=1, lane_change_rate=0 reproduces the
-! previous single-lane solver bit-for-bit.
+! Backward compatibility:
+!   Setting n_lanes = 1 and lane_change_rate = 0 gives the single-lane solver behaviour.
+
 module pde_solver
+  ! Finite volume PDE solver for single lane and multilane traffic flow.
+  !
+  ! This module advances a macroscopic traffic density model using a finite volume
+  ! discretisation. Each lane is updated independently in the longitudinal direction,
+  ! then optional conservative lane change source terms transfer density between
+  ! neighbouring lanes.
+  !
+  ! The solver supports several initial conditions, boundary conditions, numerical 
+  ! fluxes and NetCDF output. The single lane case is recovered by using one lane and
+  ! disabling the lane change source term.
+
   use pde_flux
   use pde_lanechange
   use netcdf
+
   implicit none
   private
   public :: pde_params_t, pde_state_t
   public :: pde_initialise, pde_step, pde_finalise
   public :: compute_dt, write_pde_netcdf
   public :: pde_setup_params
-  real, parameter :: PI = 3.14159265358979
+
+  real, parameter :: PI = 3.14159265358979 ! Mathematical constant pi.
 
   type :: pde_params_t
-    ! Scalar fields — kept as backward-compatible CLI aliases.
-    ! pde_setup_params broadcasts them into the _lanes arrays.
-    real    :: dx, dt, domain_length
-    real    :: v_max, rho_max
-    real    :: v_limit           ! speed cap ≤ v_max; set equal to v_max for no limit
-    real    :: rho_left_bc, rho_right_bc, cfl_number
-    integer :: M, n_steps, C_checkpoint
-    character(len=16) :: ic_type   ! "constant", "riemann", "gaussian", "sine"
-    character(len=16) :: bc_type   ! "open", "periodic", "sponge"
-    character(len=16) :: flux_type ! "lf" or "godunov"
-    logical :: use_adaptive_dt
-    integer :: n_sponge
-    real    :: sponge_damping
+    ! Parameters controlling the PDE solver.
+    !
+    ! This type stores both scalar single lane parameters and lane resolved arrays.
+    ! The scalar fields are retained as backward compatible aliases. The routine
+    ! pde_setup_params broadcasts scalar values into the lane resolved arrays when
+    ! those arrays have not been provided explicitly.
 
-    ! Multi-lane extensions
-    integer :: n_lanes                        ! number of lanes (default 1)
-    real    :: lane_change_rate               ! k >= 0; 0 disables lane changing
-    real, allocatable :: v_max_lanes(:)       ! (n_lanes)
-    real, allocatable :: rho_max_lanes(:)     ! (n_lanes)
-    real, allocatable :: rho_left_bc_lanes(:)  ! (n_lanes)
-    real, allocatable :: rho_right_bc_lanes(:) ! (n_lanes)
+    real    :: dx                ! Spatial grid spacing.
+    real    :: dt                ! Time step size.
+    real    :: domain_length     ! Physical length of the one dimensional road domain.
+    real    :: v_max             ! Default maximum/free flow velocity.
+    real    :: rho_max           ! Default maximum/jam density.
+    real    :: v_limit           ! Speed cap; set equal to v_max for no speed limit.
+    real    :: rho_left_bc       ! Default left boundary density.
+    real    :: rho_right_bc      ! Default right boundary density.
+    real    :: cfl_number        ! CFL number used for adaptive time step selection.
+    
+    integer :: M                 ! Number of physical spatial cells.
+    integer :: n_steps           ! Number of time steps to run.
+    integer :: C_checkpoint      ! Checkpoint/output interval used by the driver.
+
+    character(len=16) :: ic_type   ! Initial condition: "constant", "riemann", "gaussian", "sine" or "staggered".
+    character(len=16) :: bc_type   ! Boundary condition: "open", "periodic" or "sponge".
+    character(len=16) :: flux_type ! Numerical flux or closure selector: "lf", "godunov" or "newell".
+
+    logical :: use_adaptive_dt ! Whether the driver should update dt using compute_dt
+    integer :: n_sponge        ! Number of cells in the right hand sponge layer.
+    real    :: sponge_damping  ! Damping strength used by the sponge boundary layer.
+
+    integer :: n_lanes                          ! Number of lanes in the PDE model.
+    real    :: lane_change_rate                 ! Lane change rate: zero disables lane changing.
+    real, allocatable :: v_max_lanes(:)         ! Lane resolved maximum/free flow velocities, shape (n_lanes).
+    real, allocatable :: rho_max_lanes(:)       ! Lane resolved maximum/jam densities, shape (n_lanes).
+    real, allocatable :: rho_left_bc_lanes(:)   ! Lane resolved left boundary densities, shape (n_lanes).
+    real, allocatable :: rho_right_bc_lanes(:)  ! Lane resolved right boundary densities, shape (n_lanes).
   end type pde_params_t
 
   type :: pde_state_t
-    real, allocatable :: density(:,:)  ! (n_lanes, M) physical cells
-    real, allocatable :: rho_ext(:,:)  ! (n_lanes, 0:M+1) with ghost cells
-    real, allocatable :: flux(:,:)     ! (n_lanes, 0:M) interface fluxes
-    real    :: t_current
-    integer :: step
-    integer :: clip_count  ! cells clamped after lane-change source step
+    ! Mutable state of a PDE simulation.
+    !
+    ! The density array contains only physical cells. The rho_ext array adds ome 
+    ! ghost cell on each side and is rebuilt at every step before computing
+    ! interface fluxes. The flux array stores numerical fluxes at cell interfaces.
+
+    real, allocatable :: density(:,:)  ! Traffic density in physical cells, shape (n_lanes, M)
+    real, allocatable :: rho_ext(:,:)  ! Density including ghost cells, shape (n_lanes, 0:M+1)
+    real, allocatable :: flux(:,:)     ! Interface fluxes, shape (n_lanes, 0:M)
+    real    :: t_current   ! Current simulation time.
+    integer :: step        ! Current time step index
+    integer :: clip_count  ! Number of density values clipped after lane change source updates.
   end type pde_state_t
 
 contains
 
-  ! Broadcast scalar params into per-lane arrays.
-  ! Call this after all scalar fields are set and before pde_initialise.
   subroutine pde_setup_params(params)
-    type(pde_params_t), intent(inout) :: params
-    integer :: n
-    n = params%n_lanes
+    ! Broadcast scalar solver parameters into lane resolved arrays.
+    !
+    ! This routine should be called after the scalar fields of params have been set
+    ! and before pde_initialise is called. Any lane resolved arrays that are already
+    ! allocated are left unchanged. Any missing arrays are allocated with length
+    ! params%n_lanes and filled using the corresponding scalar default value.
+    type(pde_params_t), intent(inout) :: params ! Solver parameters to complete in place.
+    
+    integer :: n ! number of lanes.
+
+    n = params%n_lanes 
 
     if (.not. allocated(params%v_max_lanes)) then
       allocate(params%v_max_lanes(n))
