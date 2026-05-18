@@ -59,6 +59,8 @@ def assert_pipeline(preset_name: str, tmp: Path):
     assert cfg_from_nc["schema_version"] == 1
     assert len(cfg_from_nc["roads"]) == len(spec.roads)
     assert len(cfg_from_nc["junctions"]) == len(spec.junctions)
+    assert cfg_from_nc["params"]["model"] == "NS", \
+        f"default model should roundtrip as 'NS', got {cfg_from_nc['params']['model']!r}"
 
     # Per-step mass conservation: N(t+1) - N(t) == entries(t+1) - exits(t+1).
     n_total = result.occupancy.reshape(n_steps, -1).sum(axis=1)
@@ -72,6 +74,19 @@ def assert_pipeline(preset_name: str, tmp: Path):
     print(f"  PASS: shape={result.occupancy.shape}  mean_density={result.road_density.mean():.3f}")
 
 
+def assert_tasep_rejected(tmp: Path):
+    """The Fortran driver should refuse to run with model='TASEP' (not implemented)."""
+    print("--- TASEP rejection ---")
+    spec, layout = PRESETS["crossroads"]()
+    params = SimParams(n_steps=50, rng_seed=1, model="TASEP")
+    try:
+        run_simulation(spec, params, layout, output_dir=tmp / "tasep_reject", binary=BINARY)
+    except RuntimeError as exc:
+        print(f"  PASS: {exc}")
+        return
+    raise AssertionError("expected RuntimeError when model='TASEP'")
+
+
 def main():
     if not BINARY.exists():
         sys.exit(f"missing binary {BINARY} — run `make run_network` first")
@@ -80,6 +95,7 @@ def main():
     try:
         for name in PRESETS:
             assert_pipeline(name, tmp)
+        assert_tasep_rejected(tmp)
         print("ALL OK")
     finally:
         shutil.rmtree(tmp, ignore_errors=True)

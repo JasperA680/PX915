@@ -80,6 +80,7 @@ class SimParams:
     p_slow: float = 0.2
     rng_seed: int = 42
     max_lane_length: int = 0        # 0 -> auto from lanes
+    model: str = "NS"               # "NS" (Nagel-Schreckenberg) or "TASEP" (skeleton; not yet implemented)
 
 
 # ---------------------------------------------------------------------------

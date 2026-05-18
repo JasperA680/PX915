@@ -24,6 +24,7 @@ module json_config_mod
         real    :: p_slow          = 0.2
         integer :: rng_seed        = 42
         integer :: max_lane_length = 0      ! 0 => compute from lanes
+        character(len=16) :: model = "NS"   ! "NS" (Nagel-Schreckenberg) or "TASEP" (skeleton)
     end type sim_params_t
 
     public :: read_config, load_text_file
@@ -123,7 +124,7 @@ contains
         integer,           intent(inout) :: pos
         type(sim_params_t), intent(inout) :: params
 
-        character(len=:), allocatable :: key
+        character(len=:), allocatable :: key, sval
         logical :: first
 
         call expect_char(buf, pos, '{')
@@ -152,6 +153,9 @@ contains
             case ("p_slow");          params%p_slow          = parse_real(buf, pos)
             case ("rng_seed");        params%rng_seed        = parse_int(buf, pos)
             case ("max_lane_length"); params%max_lane_length = parse_int(buf, pos)
+            case ("model")
+                call parse_string(buf, pos, sval)
+                params%model = sval
             case default;             call skip_value(buf, pos)
             end select
         end do

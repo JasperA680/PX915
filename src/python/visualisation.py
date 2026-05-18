@@ -128,7 +128,7 @@ def plot_summary(data, save_path=None):
 
 
 # ---------------------------------------------------------------------------
-# Network-aware plots (operate on io.NetworkResult)
+# Network-aware plots (operate on either a NetworkResult or a NetworkSpec)
 # ---------------------------------------------------------------------------
 
 def _config_layout(result):
@@ -141,105 +141,185 @@ def _config_layout(result):
     return j, r
 
 
-def plot_network_layout(result, ax=None, occupancy_t: Optional[int] = None,
-                        title: Optional[str] = None):
-    """Draw road segments and junction nodes.
+def _draw_network(ax, road_endpoints, junction_xy,
+                  road_colours=None, road_label=None,
+                  open_endpoints=(), junction_annotations=None,
+                  title=None):
+    """Geometry helper used by both spec-preview and result-heatmap callers.
 
-    If `occupancy_t` is given, colour each road by its mean lane occupancy
-    at that timestep.  Otherwise roads are drawn in a uniform colour.
+    Args:
+        road_endpoints: dict[rid -> ((x1, y1), (x2, y2))]
+        junction_xy:    dict[jid -> (x, y)]
+        road_colours:   optional dict[rid -> float in [0,1]]; draws viridis overlay + colorbar
+        road_label:     callable rid -> str, OR None to default to 'R{rid}'
+        open_endpoints: iterable of (rid, end_index) (end_index 1 or 2) to mark with red squares
+        junction_annotations: optional dict[jid -> str], placed slightly above each junction
+        title:          axes title
+    Returns: (fig, ax)
     """
-    if ax is None:
-        fig, ax = plt.subplots(figsize=(7, 6))
-    else:
-        fig = ax.figure
+    fig = ax.figure
+    rid_list = sorted(road_endpoints.keys())
+    segs = [list(road_endpoints[rid]) for rid in rid_list]
 
-    j_xy, r_ends = _config_layout(result)
-    n_roads = len(r_ends)
-
-    # Per-road colour value at time t (mean occupancy across all lanes of that road).
-    colours = None
-    if occupancy_t is not None:
-        colours = np.zeros(n_roads)
-        # Map road_id -> mean occupancy
-        rid_list = sorted(r_ends.keys())
-        lane_road = result.lane_road_id
-        lane_len  = result.lane_length
-        occ_t = result.occupancy[occupancy_t]   # (lane_index, cell)
-        for i, rid in enumerate(rid_list):
-            lanes_of_r = np.where(lane_road == rid)[0]
-            if len(lanes_of_r) == 0:
-                colours[i] = 0.0
-                continue
-            total_cells = 0
-            total_occ = 0
-            for li in lanes_of_r:
-                Lk = lane_len[li]
-                total_cells += Lk
-                total_occ += int(occ_t[li, :Lk].sum())
-            colours[i] = total_occ / max(1, total_cells)
-
-    # Draw roads.
-    segs = []
-    rid_list = sorted(r_ends.keys())
-    for rid in rid_list:
-        e1, e2 = r_ends[rid]
-        segs.append([e1, e2])
-    if colours is not None:
+    if road_colours is not None:
+        colours = np.array([road_colours.get(rid, 0.0) for rid in rid_list])
         lc = LineCollection(segs, cmap='viridis', linewidths=4)
         lc.set_array(colours)
         lc.set_clim(0, 1)
         ax.add_collection(lc)
         fig.colorbar(lc, ax=ax, label='occupancy', shrink=0.7)
     else:
-        lc = LineCollection(segs, colors='steelblue', linewidths=3)
-        ax.add_collection(lc)
+        ax.add_collection(LineCollection(segs, colors='steelblue', linewidths=3))
 
-    # Road labels at midpoint.
+    # Road midpoint labels.
+    label_fn = road_label or (lambda rid: f'R{rid}')
     for rid in rid_list:
-        e1, e2 = r_ends[rid]
+        e1, e2 = road_endpoints[rid]
         mx, my = 0.5 * (e1[0] + e2[0]), 0.5 * (e1[1] + e2[1])
-        ax.text(mx, my, f'R{rid}', fontsize=8, color='gray',
+        ax.text(mx, my, label_fn(rid), fontsize=7, color='dimgray',
                 ha='center', va='center', backgroundcolor='white')
 
-    # Draw junctions.
-    if j_xy:
-        jx = [p[0] for p in j_xy.values()]
-        jy = [p[1] for p in j_xy.values()]
-        ax.scatter(jx, jy, s=140, c='black', zorder=3)
-        for jid, (x, y) in j_xy.items():
+    # Junction nodes.
+    if junction_xy:
+        ax.scatter([p[0] for p in junction_xy.values()],
+                   [p[1] for p in junction_xy.values()],
+                   s=160, c='black', zorder=3)
+        for jid, (x, y) in junction_xy.items():
             ax.text(x, y, f'J{jid}', color='white', fontsize=8,
                     ha='center', va='center', zorder=4, fontweight='bold')
+            if junction_annotations and jid in junction_annotations:
+                ax.text(x, y + 0.1, junction_annotations[jid],
+                        fontsize=6, color='darkblue', ha='center', va='bottom')
 
-    # Open-boundary markers: square at the "open" endpoint of each road.
-    open_in_roads  = result.lane_road_id[result.lane_open_in.astype(bool)]
-    open_out_roads = result.lane_road_id[result.lane_open_out.astype(bool)]
-    open_roads = set(int(r) for r in open_in_roads) | set(int(r) for r in open_out_roads)
-    for rid in sorted(open_roads):
-        if rid not in r_ends:
+    # Open-boundary markers.
+    for rid, end in open_endpoints:
+        if rid not in road_endpoints:
             continue
-        e1, e2 = r_ends[rid]
-        # The "open" end is whichever endpoint is at an open boundary
-        # (end_junction == 0).  Look up from result.road_end_junction.
-        if rid - 1 < len(result.road_end_junction):
-            ej = result.road_end_junction[rid - 1]
-            if ej[0] == 0:
-                ax.plot(*e1, marker='s', color='tomato', markersize=8, zorder=5)
-            if ej[1] == 0:
-                ax.plot(*e2, marker='s', color='tomato', markersize=8, zorder=5)
+        e = road_endpoints[rid][end - 1]
+        ax.plot(*e, marker='s', color='tomato', markersize=8, zorder=5)
 
-    # Layout sizing.
-    all_pts = [pt for ends in r_ends.values() for pt in ends] + list(j_xy.values())
+    # Extent.
+    all_pts = [pt for ends in road_endpoints.values() for pt in ends] + list(junction_xy.values())
     if all_pts:
-        xs = [p[0] for p in all_pts]
-        ys = [p[1] for p in all_pts]
+        xs = [p[0] for p in all_pts]; ys = [p[1] for p in all_pts]
         pad = 0.3 * max(max(xs) - min(xs), max(ys) - min(ys), 1.0)
         ax.set_xlim(min(xs) - pad, max(xs) + pad)
         ax.set_ylim(min(ys) - pad, max(ys) + pad)
     ax.set_aspect('equal')
-    ax.set_title(title or f'Network layout  (t={occupancy_t if occupancy_t is not None else "—"})')
     ax.set_xticks([])
     ax.set_yticks([])
+    if title is not None:
+        ax.set_title(title)
     return fig, ax
+
+
+def _result_road_colours(result, t):
+    """Per-road mean occupancy at timestep t, keyed by road_id."""
+    out = {}
+    lane_road = result.lane_road_id
+    lane_len  = result.lane_length
+    occ_t = result.occupancy[t]
+    for rid in np.unique(lane_road):
+        lanes_of_r = np.where(lane_road == rid)[0]
+        total_cells = sum(int(lane_len[li]) for li in lanes_of_r)
+        total_occ = sum(int(occ_t[li, :lane_len[li]].sum()) for li in lanes_of_r)
+        out[int(rid)] = total_occ / max(1, total_cells)
+    return out
+
+
+def _result_open_endpoints(result):
+    """List of (rid, end) tuples (end 1 or 2) where the road has an open boundary."""
+    open_ids = set(int(r) for r in result.lane_road_id[result.lane_open_in.astype(bool)])
+    open_ids |= set(int(r) for r in result.lane_road_id[result.lane_open_out.astype(bool)])
+    out = []
+    for rid in sorted(open_ids):
+        if rid - 1 >= len(result.road_end_junction):
+            continue
+        ej = result.road_end_junction[rid - 1]
+        if ej[0] == 0:
+            out.append((rid, 1))
+        if ej[1] == 0:
+            out.append((rid, 2))
+    return out
+
+
+def plot_network_layout(result, ax=None, occupancy_t: Optional[int] = None,
+                        title: Optional[str] = None):
+    """Draw a NetworkResult's network: roads, junctions, open boundaries.
+
+    If `occupancy_t` is given, colour each road by its mean lane occupancy
+    at that timestep; otherwise the roads are drawn in a uniform colour.
+    """
+    if ax is None:
+        _, ax = plt.subplots(figsize=(7, 6))
+    j_xy, r_ends = _config_layout(result)
+    return _draw_network(
+        ax, road_endpoints=r_ends, junction_xy=j_xy,
+        road_colours=_result_road_colours(result, occupancy_t) if occupancy_t is not None else None,
+        open_endpoints=_result_open_endpoints(result),
+        title=title or f'Network layout  (t={occupancy_t if occupancy_t is not None else "—"})',
+    )
+
+
+def plot_network_spec(spec, layout, ax=None, alpha_beta_labels: bool = False,
+                      title: Optional[str] = None):
+    """Draw a NetworkSpec preview (no occupancy overlay).
+
+    Used by the GUI before a run completes.  Optionally annotates each road
+    with α/β values from its open lanes, and each 4-way junction with its
+    L/S/R turn probabilities.
+    """
+    if ax is None:
+        _, ax = plt.subplots(figsize=(5, 5))
+
+    # Open endpoints: roads with end_junction == 0 and at least one open lane on that end.
+    open_eps = []
+    for r in spec.roads:
+        has_open = any(ln.open_in or ln.open_out for ln in r.lanes)
+        if not has_open:
+            continue
+        if r.end_junction[0] == 0:
+            open_eps.append((r.id, 1))
+        if r.end_junction[1] == 0:
+            open_eps.append((r.id, 2))
+
+    # Road labels: append α/β if requested and the road has open boundaries.
+    road_by_id = {r.id: r for r in spec.roads}
+    def _label(rid):
+        if not alpha_beta_labels:
+            return f'R{rid}'
+        r = road_by_id[rid]
+        a_set = any(ln.open_in for ln in r.lanes)
+        b_set = any(ln.open_out for ln in r.lanes)
+        if not (a_set or b_set):
+            return f'R{rid}'
+        bits = []
+        if a_set:
+            a = next(ln.alpha for ln in r.lanes if ln.open_in)
+            bits.append(f'α={a:.2f}')
+        if b_set:
+            b = next(ln.beta for ln in r.lanes if ln.open_out)
+            bits.append(f'β={b:.2f}')
+        return f'R{rid}\n' + ' '.join(bits)
+
+    # Junction annotations: only when there's a single junction.  When there
+    # are several with identical defaults the labels overlap each other.
+    annotations = {}
+    if alpha_beta_labels and len(spec.junctions) == 1:
+        j = spec.junctions[0]
+        if j.n_in == 4 and j.routes:
+            row = j.routes[0]
+            annotations[j.id] = f"L={row[1]:.2f} S={row[2]:.2f} R={row[3]:.2f}"
+
+    return _draw_network(
+        ax,
+        road_endpoints=layout.road_endpoints,
+        junction_xy=layout.junctions,
+        road_label=_label,
+        open_endpoints=open_eps,
+        junction_annotations=annotations,
+        title=title or 'Network preview',
+    )
 
 
 def plot_network_density(result, ax=None, title=None):

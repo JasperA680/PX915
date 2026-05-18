@@ -13,10 +13,7 @@ import subprocess
 from pathlib import Path
 from typing import Callable, Optional, Tuple
 
-try:
-    from python.road_network import NetworkSpec, SimParams, LayoutSpec, spec_to_dict, validate
-except ImportError:
-    from road_network import NetworkSpec, SimParams, LayoutSpec, spec_to_dict, validate
+from python.road_network import NetworkSpec, SimParams, LayoutSpec, spec_to_dict, validate
 
 
 _STEP_RE = re.compile(r"^step (\d+)/(\d+)\s*$")
@@ -54,6 +51,9 @@ def run_simulation(
         bufsize=1,
     )
 
+    # Keep a tail of non-progress lines so we can include the binary's error
+    # message in the RuntimeError if it exits non-zero.
+    tail: list[str] = []
     assert proc.stdout is not None
     for line in proc.stdout:
         line = line.rstrip()
@@ -61,12 +61,19 @@ def run_simulation(
         if m and progress is not None:
             k, n = int(m.group(1)), int(m.group(2))
             progress(k / n, line)
-        elif progress is not None:
-            progress(-1.0, line)   # informational
+        else:
+            tail.append(line)
+            if len(tail) > 20:
+                tail.pop(0)
+            if progress is not None:
+                progress(-1.0, line)
 
     rc = proc.wait()
     if rc != 0:
-        raise RuntimeError(f"run_network exited with code {rc}")
+        msg = f"run_network exited with code {rc}"
+        if tail:
+            msg += ": " + " | ".join(tail[-3:])
+        raise RuntimeError(msg)
     return nc_path
 
 
