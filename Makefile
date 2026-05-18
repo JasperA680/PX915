@@ -23,6 +23,7 @@ VEHICLE_SRC      = $(SRC_DIR)/vehicle.f90
 NETWORK_SRC      = $(SRC_DIR)/road_network.f90
 NETWORK_INIT_SRC = $(SRC_DIR)/network_init.f90
 
+NS_MODEL_SRC     = $(SRC_DIR)/NS_model.f90
 JUNCTION_SRC     = $(SRC_DIR)/junction.f90
 LANE_CHANGE_SRC  = $(SRC_DIR)/lane_change.f90
 NET_SIM_SRC      = $(SRC_DIR)/network_simulation.f90

@@ -3,18 +3,22 @@ program test_simulation
     use tasep_io
     implicit none
 
-    integer, parameter :: L = 10
+    ! Select model: 'TASEP' or 'NS'
+    character(len=10), parameter :: MODEL = 'TASEP'
+
+    integer, parameter :: L       = 10
     integer, parameter :: n_steps = 100
-    real,    parameter :: alpha = 0.5, beta = 0.5
+    real,    parameter :: alpha   = 0.5, beta = 0.5
 
     integer :: history(L, n_steps)
     real    :: density_history(n_steps)
     integer :: current_history(n_steps)
     integer :: total_exits
-
     integer :: step
 
-    call run_simulation(L, n_steps, alpha, beta, history, density_history, current_history, total_exits)
+    call run_simulation(L, n_steps, alpha, beta, &
+                        history, density_history, current_history, total_exits, &
+                        MODEL)
 
     do step = 1, n_steps
         print *, "Step:", step

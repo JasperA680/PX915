@@ -32,6 +32,9 @@ program test_t_junction
     use network_simulation_mod
     implicit none
 
+    ! Select model: 'NS' or 'TASEP'
+    character(len=10), parameter :: MODEL = 'NS'
+
     integer, parameter :: L       = 10
     integer, parameter :: N_STEPS = 2000
     real,    parameter :: ALPHA   = 0.4
@@ -70,45 +73,47 @@ contains
 
     subroutine plant_west_in(net)
         type(road_network_t), intent(inout) :: net
-        net%roads(1)%lane(1)%cells(L) = V_OCCUPIED
+        net%roads(1)%lane(1)%cells(L)%has_car  = .true.
+        net%roads(1)%lane(1)%cells(L)%velocity = 0
     end subroutine plant_west_in
 
     subroutine plant_stem_in(net)
         type(road_network_t), intent(inout) :: net
-        net%roads(2)%lane(1)%cells(L) = V_OCCUPIED
+        net%roads(2)%lane(1)%cells(L)%has_car  = .true.
+        net%roads(2)%lane(1)%cells(L)%velocity = 0
     end subroutine plant_stem_in
 
     subroutine force_route(net, jid, leg, out_idx)
         type(road_network_t), intent(inout) :: net
         integer, intent(in) :: jid, leg, out_idx
-        net%junctions(jid)%in_routes(leg)%prob         = 0.0
+        net%junctions(jid)%in_routes(leg)%prob          = 0.0
         net%junctions(jid)%in_routes(leg)%prob(out_idx) = 1.0
     end subroutine force_route
 
     function west_in_holding(net) result(v)
         type(road_network_t), intent(in) :: net
         integer :: v
-        v = net%roads(1)%lane(1)%cells(L)
+        v = merge(V_OCCUPIED, V_EMPTY, net%roads(1)%lane(1)%cells(L)%has_car)
     end function west_in_holding
 
     function stem_in_holding(net) result(v)
         type(road_network_t), intent(in) :: net
         integer :: v
-        v = net%roads(2)%lane(1)%cells(L)
+        v = merge(V_OCCUPIED, V_EMPTY, net%roads(2)%lane(1)%cells(L)%has_car)
     end function stem_in_holding
 
     function west_out_dest(net) result(v)
         ! road1 lane2 site 1 (outbound, flow -1, site 1 at junction end_2)
         type(road_network_t), intent(in) :: net
         integer :: v
-        v = net%roads(1)%lane(2)%cells(1)
+        v = merge(V_OCCUPIED, V_EMPTY, net%roads(1)%lane(2)%cells(1)%has_car)
     end function west_out_dest
 
     function east_out_dest(net) result(v)
         ! road3 lane1 site 1 (outbound, flow +1, site 1 at junction end_1)
         type(road_network_t), intent(in) :: net
         integer :: v
-        v = net%roads(3)%lane(1)%cells(1)
+        v = merge(V_OCCUPIED, V_EMPTY, net%roads(3)%lane(1)%cells(1)%has_car)
     end function east_out_dest
 
     subroutine assert(cond, msg)
@@ -257,7 +262,6 @@ contains
         if (west_in_holding(net) == V_EMPTY) n_moved = n_moved + 1
         if (stem_in_holding(net) == V_EMPTY) n_moved = n_moved + 1
         call assert(n_moved == 1, 'T chord conflict: exactly one should advance')
-        ! Blocked vehicle must remain waiting in its holding cell.
         call assert(west_in_holding(net) == V_OCCUPIED .or. &
                     stem_in_holding(net) == V_OCCUPIED, &
                     'T chord conflict: blocked vehicle must wait in holding cell')
@@ -286,22 +290,22 @@ contains
 
         do step = 1, N_STEPS
             n_before = count_occupied_network(net)
-            call network_step(net)
+            call network_step(net, MODEL)
 
             entries = 0
             exits   = 0
 
             ! Entries: new vehicle at open-in site 1.
-            if (net%roads(1)%lane(1)%cells(1) /= V_EMPTY .and. &
-                net%roads(1)%lane(1)%old(1)   == V_EMPTY) entries = entries + 1
-            if (net%roads(2)%lane(1)%cells(1) /= V_EMPTY .and. &
-                net%roads(2)%lane(1)%old(1)   == V_EMPTY) entries = entries + 1
+            if (net%roads(1)%lane(1)%cells(1)%has_car .and. &
+                .not. net%roads(1)%lane(1)%old(1)%has_car) entries = entries + 1
+            if (net%roads(2)%lane(1)%cells(1)%has_car .and. &
+                .not. net%roads(2)%lane(1)%old(1)%has_car) entries = entries + 1
 
             ! Exits: vehicle cleared from open-out site L.
-            if (net%roads(1)%lane(2)%cells(L) == V_EMPTY .and. &
-                net%roads(1)%lane(2)%old(L)   /= V_EMPTY) exits = exits + 1
-            if (net%roads(3)%lane(1)%cells(L) == V_EMPTY .and. &
-                net%roads(3)%lane(1)%old(L)   /= V_EMPTY) exits = exits + 1
+            if (.not. net%roads(1)%lane(2)%cells(L)%has_car .and. &
+                net%roads(1)%lane(2)%old(L)%has_car) exits = exits + 1
+            if (.not. net%roads(3)%lane(1)%cells(L)%has_car .and. &
+                net%roads(3)%lane(1)%old(L)%has_car) exits = exits + 1
 
             n_after = count_occupied_network(net)
             if (n_after /= n_before + entries - exits) then
