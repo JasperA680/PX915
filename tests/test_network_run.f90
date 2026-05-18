@@ -4,13 +4,8 @@ program test_network_run
     !
     !   count(t+1) = count(t) + entries(t) - exits(t)
     !
-    ! where entries = new vehicles at inbound site 1 (open alpha boundary)
-    !       exits   = vehicles that leave at outbound site L (open beta boundary)
-    !
-    ! Any per-step violation stops the test with a diagnostic.
-    !
-    ! A steady-state symmetry check is also run: all four road legs should
-    ! carry a similar outbound current after many steps.
+    ! A steady-state symmetry check confirms all four road legs carry
+    ! similar outbound currents after many steps.
     !--------------------------------------------------------------------
     use vehicle_mod
     use road_network_mod
@@ -18,6 +13,9 @@ program test_network_run
     use junction_mod
     use network_simulation_mod
     implicit none
+
+    ! Select model: 'NS' or 'TASEP'
+    character(len=10), parameter :: MODEL = 'NS'
 
     integer, parameter :: L       = 20
     integer, parameter :: N_STEPS = 5000
@@ -33,8 +31,7 @@ program test_network_run
     integer :: n_before, n_after, step_entries, step_exits, r
     integer :: step, seed_size
     integer, allocatable :: seed(:)
-    real    :: mean_exit(4)
-    real    :: max_j, min_j
+    real    :: mean_exit(4), max_j, min_j
 
     call random_seed(size = seed_size)
     allocate(seed(seed_size))
@@ -45,28 +42,25 @@ program test_network_run
     call init_crossroad(net, L, ALPHA, BETA, P_LEFT, P_RIGHT)
 
     do step = 1, BURNIN
-        call network_step(net)
+        call network_step(net, MODEL)
     end do
 
-    ! n_initial for production run is the network count AFTER burnin.
-    n_before      = count_occupied_network(net)
-    cum_entries   = 0
-    cum_exits     = 0
+    n_before    = count_occupied_network(net)
+    cum_entries = 0
+    cum_exits   = 0
 
     !---- Step-by-step mass conservation --------------------------------
     do step = 1, N_STEPS
-        call network_step(net)
+        call network_step(net, MODEL)
 
         step_entries = 0
         step_exits   = 0
         do r = 1, 4
-            ! Entry: new vehicle appeared at inbound lane (lane 2) site 1.
             if (net%roads(r)%lane(2)%cells(1)%has_car .and. &
                 .not. net%roads(r)%lane(2)%old(1)%has_car) then
                 step_entries        = step_entries + 1
                 cum_entries(r) = cum_entries(r) + 1
             end if
-            ! Exit: vehicle disappeared from outbound lane (lane 1) site L.
             if (.not. net%roads(r)%lane(1)%cells(net%roads(r)%lane(1)%length)%has_car .and. &
                 net%roads(r)%lane(1)%old(net%roads(r)%lane(1)%length)%has_car) then
                 step_exits        = step_exits + 1

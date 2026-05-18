@@ -1,7 +1,8 @@
 program test_ns_grid
     !--------------------------------------------------------------------
-    ! Nagel-Schreckenberg validation on the 2D crossroad grid.
-    ! Prints per-lane velocity snapshots for visual inspection.
+    ! Grid validation on the 2D crossroad.
+    ! Prints per-lane snapshots for visual inspection and checks mass
+    ! conservation and valid moves after each step.
     !--------------------------------------------------------------------
     use vehicle_mod
     use road_network_mod
@@ -9,23 +10,24 @@ program test_ns_grid
     use network_simulation_mod
     implicit none
 
-    integer, parameter :: L = 12
+    ! Select model: 'NS' or 'TASEP'
+    character(len=10), parameter :: MODEL = 'NS'
+
+    integer, parameter :: L      = 12
     integer, parameter :: N_STEPS = 20
-    integer, parameter :: V_MAX = 5
+    integer, parameter :: V_MAX  = 5
 
     type(road_network_t) :: net
     integer :: step
 
     call seed_rng(20260506)
     call init_crossroad(net, L, 0.99, 0.01, 0.99, 0.0)
-    !call close_boundaries(net)
-    !call seed_layout(net)
 
-    print *, 'NS 2D grid (crossroad) test'
+    print '(a,a)', 'Model: ', trim(MODEL)
     call print_state(net, 0)
 
     do step = 1, N_STEPS
-        call network_step(net)
+        call network_step(net, MODEL)
         call check_step(net, step)
         call print_state(net, step)
     end do
@@ -35,7 +37,7 @@ program test_ns_grid
 
 contains
 
-    subroutine seed_rng(s)                  ! Routine to seed the randomness of the simulation for reproducibility
+    subroutine seed_rng(s)
         integer, intent(in) :: s
         integer :: n
         integer, allocatable :: seed(:)
@@ -46,37 +48,7 @@ contains
         deallocate(seed)
     end subroutine seed_rng
 
-    subroutine close_boundaries(net)                ! Allows the grid to operate without switching of cars between road segments
-        type(road_network_t), intent(inout) :: net
-        integer :: r, ln
-        do r = 1, size(net%roads)
-            do ln = 1, size(net%roads(r)%lane)
-                net%roads(r)%lane(ln)%open_in  = .false.
-                net%roads(r)%lane(ln)%open_out = .false.
-                net%roads(r)%lane(ln)%alpha    = 0.0
-                net%roads(r)%lane(ln)%beta     = 0.0
-            end do
-        end do
-    end subroutine close_boundaries
-
-    subroutine seed_layout(net)                     ! Allows the user to input a specific car layout, if desired
-        type(road_network_t), intent(inout) :: net
-        call place_car(net%roads(1)%lane(2), 2, 1)
-        call place_car(net%roads(1)%lane(2), 6, 0)
-        call place_car(net%roads(1)%lane(2), 5, 0)
-        call place_car(net%roads(2)%lane(2), 3, 2)
-        call place_car(net%roads(3)%lane(1), 5, 1)
-        call place_car(net%roads(4)%lane(2), 4, 0)
-    end subroutine seed_layout
-
-    subroutine place_car(ln, pos, vel)              ! Places a car at a certain position in the network, used in seed_layout()
-        type(lane_t), intent(inout) :: ln
-        integer, intent(in) :: pos, vel
-        ln%cells(pos)%has_car = .true.
-        ln%cells(pos)%velocity = vel
-    end subroutine place_car
-
-    subroutine print_state(net, step)               ! Prints configuration of all roads in network, for visualisation during testing
+    subroutine print_state(net, step)
         type(road_network_t), intent(in) :: net
         integer, intent(in) :: step
         character(len=L) :: out_lane, in_lane
@@ -91,7 +63,7 @@ contains
         end do
     end subroutine print_state
 
-    subroutine render_lane(cells, line)             ! Prints configuration of a single lane, used in print_state()
+    subroutine render_lane(cells, line)
         type(cell), intent(in) :: cells(:)
         character(len=*), intent(out) :: line
         integer :: i, v
@@ -105,7 +77,7 @@ contains
         end do
     end subroutine render_lane
 
-    subroutine check_step(net, step)                ! Checking routine, sanity checks that the number of cars is conserved between steps
+    subroutine check_step(net, step)
         type(road_network_t), intent(in) :: net
         integer, intent(in) :: step
         integer :: r, ln, Lk
@@ -138,9 +110,6 @@ contains
         do r = 1, size(net%roads)
             do ln = 1, size(net%roads(r)%lane)
                 Lk = net%roads(r)%lane(ln)%length
-                ! Skip if an open boundary event occurred: a simultaneous entry
-                ! and junction exit keeps n_old==n_new but breaks the 1-to-1
-                ! vehicle pairing that check_lane_ns relies on.
                 if (net%roads(r)%lane(ln)%open_in .and. &
                     .not. net%roads(r)%lane(ln)%old(1)%has_car .and. &
                     net%roads(r)%lane(ln)%cells(1)%has_car) cycle
@@ -153,22 +122,20 @@ contains
         end do
     end subroutine check_step
 
-    integer function count_occupied_old(net) result(n)  ! Counts number of cars in the network, used in check_step()
+    integer function count_occupied_old(net) result(n)
         type(road_network_t), intent(in) :: net
         integer :: r, ln, k
         n = 0
         do r = 1, size(net%roads)
             do ln = 1, size(net%roads(r)%lane)
                 do k = 1, net%roads(r)%lane(ln)%length
-                    if (net%roads(r)%lane(ln)%old(k)%has_car) then
-                        n = n + 1
-                    end if
+                    if (net%roads(r)%lane(ln)%old(k)%has_car) n = n + 1
                 end do
             end do
         end do
     end function count_occupied_old
 
-    subroutine check_lane_ns(old_cells, new_cells, step, road_id, lane_id)  ! Checking function, but for the Nagel-Schreckenberg model
+    subroutine check_lane_ns(old_cells, new_cells, step, road_id, lane_id)
         type(cell), intent(in) :: old_cells(:), new_cells(:)
         integer, intent(in) :: step, road_id, lane_id
         integer :: n_old, n_new, i, idx, gap, v_calc, pos1, pos2, new_v, len
@@ -177,10 +144,6 @@ contains
         len = size(old_cells)
         n_old = count(old_cells%has_car)
         n_new = count(new_cells%has_car)
-        ! Per-lane counts can legitimately differ when a car crosses a junction
-        ! this step. The global mass-conservation check in check_step catches
-        ! phantom cars; here we just skip the per-lane NS checks for lanes
-        ! where a junction transfer occurred.
         if (n_old /= n_new) return
         if (n_old == 0) return
 
@@ -190,7 +153,7 @@ contains
             if (old_cells(i)%has_car) then
                 idx = idx + 1
                 old_pos(idx) = i
-                old_v(idx) = old_cells(i)%velocity
+                old_v(idx)   = old_cells(i)%velocity
             end if
         end do
         idx = 0
