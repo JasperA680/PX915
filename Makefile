@@ -37,7 +37,7 @@ NETWORK_IO_SRC      = $(SRC_DIR)/network_io.f90
 RUN_NETWORK_SRC     = $(SRC_DIR)/run_network.f90
 
 NETWORK_LIB_SRC = $(VEHICLE_SRC) $(NETWORK_SRC) $(NETWORK_INIT_SRC) \
-                  $(LANE_CHANGE_SRC) $(JUNCTION_SRC) $(NET_SIM_SRC)
+                  $(LANE_CHANGE_SRC) $(JUNCTION_SRC) $(NS_MODEL_SRC) $(NET_SIM_SRC)
 
 # PDE source files (pde_flux and pde_lanechange must precede pde_module due to USE deps)
 PDE_FLUX_SRC = $(SRC_DIR)/pde_flux.f90

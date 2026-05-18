@@ -58,15 +58,6 @@ program run_network
     call read_config(trim(config_path), spec, params)
     call load_text_file(trim(config_path), config_json)
 
-    ! Model dispatch: only NS is currently implemented.  The schema and JSON
-    ! carry a `model` field so future TASEP / other CA rules can plug in
-    ! without breaking the config format.
-    if (trim(params%model) /= "NS") then
-        write(*,'(a,a,a)') "ERROR: model '", trim(params%model), &
-            "' not yet implemented; pick 'NS' (Nagel-Schreckenberg)."
-        stop 1
-    end if
-
     n_steps = params%n_steps
 
     ! Build network.
@@ -117,7 +108,7 @@ program run_network
 
     ! ----- Simulation loop -----
     do step = 1, n_steps
-        call network_step(net)
+        call network_step(net, params%model)
 
         ! Record state and per-road counters.
         do r = 1, n_roads

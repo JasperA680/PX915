@@ -26,6 +26,7 @@ module network_simulation_mod
     use road_network_mod
     use junction_mod
     use lane_change_mod
+    use NS_model, only: NS_model_step
     implicit none
     private
 
