@@ -20,6 +20,7 @@ extensions = [
     'sphinx.ext.napoleon',
     'sphinxfortran.fortran_domain',
     'sphinxfortran.fortran_autodoc',
+    'sphinx.ext.mathjax',
 ]
 
 templates_path = ['_templates']
