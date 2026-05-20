@@ -6,14 +6,21 @@ module pde_flux
   ! Greenshields fundamental diagram, where the traffic velocity decreases
   ! linearly with density and the flux is a concave quadratic function.
   !
-  ! All Greenshields routines accept an optional speed-limit argument v_limit.
-  ! Setting v_limit = v_max recovers the classical diagram. For v_limit < v_max
-  ! the free-flow branch is capped, introducing a kink at rho* = rho_max*(1 -
-  ! v_limit/v_max) while preserving concavity.
+  ! All Greenshields routines accept an optional speed-limit argument
+  ! :math:`v_{\mathrm{limit}}`. Setting
+  ! :math:`v_{\mathrm{limit}} = v_{\max}` recovers the classical diagram. For
+  ! :math:`v_{\mathrm{limit}} < v_{\max}`, the free-flow branch is capped,
+  ! introducing a kink at
   !
-  ! The module also provides Newell-Daganzo triangular flux routines (where
-  ! v_limit replaces v_max in the free-flow branch), numerical flux functions,
-  ! and dispatch routines for selecting a closure at runtime.
+  ! .. math::
+  !
+  !    \rho^* =
+  !    \rho_{\max}\left(1 - \frac{v_{\mathrm{limit}}}{v_{\max}}\right)
+  !
+  ! while preserving concavity. The module also provides Newell-Daganzo
+  ! triangular flux routines, where :math:`v_{\mathrm{limit}}` replaces
+  ! :math:`v_{\max}` in the free-flow branch, numerical flux functions, and
+  ! dispatch routines for selecting a closure at runtime.
 
   implicit none
   private
@@ -103,7 +110,9 @@ contains
     ! The critical density is the density at which the Greenshields flux is
     ! maximised. For the quadratic flux (with or without speed limit), this is
     !
-    !   rho_c = rho_max / 2.
+    ! .. math::
+    !
+    !   \rho_c = \rho_{\max} / 2.
     real, intent(in) :: rho_max  ! Maximum/jam density.
     real :: rc                   ! Critical density where q(rho) is maximised.
 
@@ -117,10 +126,15 @@ contains
     ! The Lax-Friedrichs flux averages the physical fluxes on the left and
     ! right states and adds numerical diffusion:
     !
-    !   F_LF = 0.5 * (q(rho_L) + q(rho_R)) - (dx / (2*dt)) * (rho_R - rho_L)
+    ! .. math::
+    !
+    !    F_{\mathrm{LF}} =
+    !    \frac{1}{2}\left[q(\rho_L) + q(\rho_R)\right]
+    !    - \frac{\Delta x}{2\Delta t}(\rho_R - \rho_L)
     !
     ! This flux is robust and useful for debugging, but more diffusive than
-    ! the Godunov flux. The speed-limited q is used when v_limit < v_max.
+    ! the Godunov flux. The speed-limited flux :math:`q` is used when
+    ! :math:`v_{\mathrm{limit}} < v_{\max}`.
     real, intent(in) :: rho_L    ! Density on the left side of the cell interface.
     real, intent(in) :: rho_R    ! Density on the right side of the cell interface.
     real, intent(in) :: v_max    ! Maximum/free-flow velocity (uncapped).
@@ -139,19 +153,50 @@ contains
   function godunov_flux(rho_L, rho_R, v_max, rho_max, v_limit) result(F)
     ! Return the Godunov numerical flux for the Greenshields closure.
     !
-    ! The Godunov flux solves the local Riemann problem at a cell interface.
-    ! The Greenshields diagram (with or without speed limit) is concave, so
-    ! the argmax is always rho_c = rho_max / 2 and the closed-form cases are:
+    ! The Godunov flux solves the local Riemann problem at a cell
+    ! interface. For the Greenshields closure, the physical flux is
     !
-    ! rho_L <= rho_R (shock):
-    !   both sub-critical:   F = q(rho_L)
-    !   both super-critical: F = q(rho_R)
-    !   straddle rho_c:      F = min(q(rho_L), q(rho_R))
+    ! .. math::
     !
-    ! rho_L > rho_R (rarefaction):
-    !   both sub-critical:   F = q(rho_L)
-    !   both super-critical: F = q(rho_R)
-    !   sonic (rho_R < rho_c < rho_L): F = q(rho_c)
+    !    q(\rho) =
+    !    v_{\max}\rho\left(1 - \frac{\rho}{\rho_{\max}}\right),
+    !
+    ! or its speed-limited equivalent when
+    ! :math:`v_{\mathrm{limit}} < v_{\max}`. The flux is concave, with
+    ! critical density
+    !
+    ! .. math::
+    !
+    !    \rho_c = \frac{\rho_{\max}}{2}.
+    !
+    ! For a left state :math:`\rho_L` and right state :math:`\rho_R`, the
+    ! Godunov flux is selected from the local Riemann solution.
+    !
+    ! **Shock case:** :math:`\rho_L \leq \rho_R`
+    !
+    ! .. math::
+    !
+    !    F_G(\rho_L,\rho_R) =
+    !    \begin{cases}
+    !    q(\rho_L), & \rho_R \leq \rho_c, \\
+    !    q(\rho_R), & \rho_L \geq \rho_c, \\
+    !    \min\left[q(\rho_L), q(\rho_R)\right],
+    !    & \rho_L < \rho_c < \rho_R .
+    !    \end{cases}
+    !
+    ! **Rarefaction case:** :math:`\rho_L > \rho_R`
+    !
+    ! .. math::
+    !
+    !    F_G(\rho_L,\rho_R) =
+    !    \begin{cases}
+    !    q(\rho_L), & \rho_L \leq \rho_c, \\
+    !    q(\rho_R), & \rho_R \geq \rho_c, \\
+    !    q(\rho_c), & \rho_R < \rho_c < \rho_L .
+    !    \end{cases}
+    !
+    ! The final case corresponds to a sonic rarefaction, where the
+    ! rarefaction fan crosses the density of maximum flux.
     real, intent(in) :: rho_L    ! Density on the left side of the cell interface.
     real, intent(in) :: rho_R    ! Density on the right side of the cell interface.
     real, intent(in) :: v_max    ! Maximum/free-flow velocity (uncapped).
@@ -186,20 +231,23 @@ contains
   end function godunov_flux
 
 
-  ! ---------------------------------------------------------------
-  ! Newell-Daganzo triangular fundamental diagram
-  ! ---------------------------------------------------------------
-
   elemental function q_newell(rho, rho_max, v_limit) result(q)
     ! Return the Newell-Daganzo triangular traffic flux.
     !
     ! The Newell-Daganzo closure uses a piecewise-linear fundamental diagram:
     !
-    !   q(rho) = min(v_limit * rho, NEWELL_W * (rho_max - rho)).
+    ! .. math::
     !
-    ! The free-flow branch has slope v_limit (the speed limit). The congested
-    ! branch has backward wave speed NEWELL_W. Setting v_limit = v_max
-    ! recovers the classical Newell diagram.
+    !    q(\rho) =
+    !    \min\left(
+    !    v_{\mathrm{limit}}\rho,\,
+    !    W(\rho_{\max} - \rho)
+    !    \right).
+    !
+    ! The free-flow branch has slope :math:`v_{\mathrm{limit}}`, the speed
+    ! limit. The congested branch has backward wave speed :math:`W`.
+    ! Setting :math:`v_{\mathrm{limit}} = v_{\max}` recovers the classical
+    ! Newell diagram.
     real, intent(in) :: rho      ! Traffic density.
     real, intent(in) :: rho_max  ! Maximum/jam density.
     real, intent(in) :: v_limit  ! Speed limit; slope of the free-flow branch.
