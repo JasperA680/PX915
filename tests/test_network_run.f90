@@ -39,7 +39,7 @@ program test_network_run
     call init_crossroad(net, L, ALPHA, BETA, P_LEFT, P_RIGHT)
 
     do step = 1, BURNIN
-        call network_step(net, "NS")
+        call network_step(net, "NS", -1, 1.0, 5, 0.2)
     end do
 
     n_before    = count_occupied_network(net)
@@ -48,7 +48,7 @@ program test_network_run
 
     !---- Step-by-step mass conservation --------------------------------
     do step = 1, N_STEPS
-        call network_step(net, "NS")
+        call network_step(net, "NS", -1, 1.0, 5, 0.2)
 
         step_entries = 0
         step_exits   = 0

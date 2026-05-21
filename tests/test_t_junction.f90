@@ -290,7 +290,7 @@ contains
 
         do step = 1, N_STEPS
             n_before = count_occupied_network(net)
-            call network_step(net, MODEL)
+            call network_step(net, MODEL, -1, 1.0, 5, 0.2)
 
             entries = 0
             exits   = 0
