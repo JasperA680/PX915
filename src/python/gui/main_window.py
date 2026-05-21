@@ -37,8 +37,13 @@ DEFAULT_PDE_OUTDIR = REPO_ROOT / "data" / "output" / "gui_pde"
 # is plumbed through the JSON config but the Fortran driver errors out on it.
 CA_MODELS = ("NS", "TASEP")
 
-# Presets where TASEP physics is appropriate (single 1D chain only).
-TASEP_OK_PRESETS = {"single_lane"}
+# Presets where TASEP physics is appropriate.  TASEP is a 1D single-chain
+# process — any preset whose roads decompose into independent 1D lanes with
+# right-ward hops is fair game.  That includes the junction/network presets,
+# whose roads are still individual chains connected by junctions.  Only
+# ``two_lane`` is excluded because the whole point of that preset is the
+# lane-change feature, which TASEP doesn't model.
+TASEP_OK_PRESETS = {"single_lane", "crossroads", "roundabout", "town"}
 
 # Presets where the fundamental-diagram sweep is meaningful.  The sweep
 # uses pure-Python TASEP on a single chain, so junctions / multilane / routing
