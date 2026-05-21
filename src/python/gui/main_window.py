@@ -6,7 +6,7 @@ import os
 from pathlib import Path
 from typing import Optional
 
-from PyQt5.QtCore import Qt, pyqtSignal
+from PyQt5.QtCore import Qt, QThread, pyqtSignal
 from PyQt5.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QSplitter, QComboBox,
     QPushButton, QProgressBar, QLabel, QStatusBar, QPlainTextEdit, QTabWidget,
@@ -24,7 +24,7 @@ from python.gui.plot_panel import PlotPanel
 from python.gui.pde_param_form import PDEParamForm, PRESETS_ORDER, CUSTOM_LABEL
 from python.gui.pde_runner_thread import PDERunnerThread
 from python.gui.pde_plot_panel import PDEPlotPanel
-from python.gui.road_edit_dialog import RoadEditDialog
+from python.gui.road_edit_dialog import RoadEditDialog, JunctionEditDialog
 
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -36,6 +36,29 @@ DEFAULT_PDE_OUTDIR = REPO_ROOT / "data" / "output" / "gui_pde"
 # Available CA update rules.  Only "NS" is implemented physics-side; "TASEP"
 # is plumbed through the JSON config but the Fortran driver errors out on it.
 CA_MODELS = ("NS", "TASEP")
+
+# Presets where TASEP physics is appropriate (single 1D chain only).
+TASEP_OK_PRESETS = {"single_lane"}
+
+
+class FDSweepThread(QThread):
+    """Run the pure-Python TASEP fundamental_diagram() sweep off the UI thread."""
+
+    finished_ok = pyqtSignal(object, object, int, int)   # rho, J, L, n_points
+    finished_error = pyqtSignal(str)
+
+    def __init__(self, L: int = 50, n_points: int = 30, parent=None):
+        super().__init__(parent)
+        self.L = L
+        self.n_points = n_points
+
+    def run(self):
+        try:
+            from python.analysis import fundamental_diagram
+            rho, J = fundamental_diagram(L=self.L, n_points=self.n_points)
+            self.finished_ok.emit(rho, J, self.L, self.n_points)
+        except Exception as exc:
+            self.finished_error.emit(str(exc))
 
 
 class CATab(QWidget):
@@ -50,11 +73,14 @@ class CATab(QWidget):
         self._binary = binary
         self._output_dir = output_dir
         self._runner: Optional[RunnerThread] = None
+        self._fd_runner: Optional[FDSweepThread] = None
         self._current_spec: Optional[NetworkSpec] = None
         self._current_layout: Optional[LayoutSpec] = None
         # Per-road parameter overrides set via the click-to-edit dialog.
         # Keyed by road_id; reset when the preset combo changes.
         self._road_overrides: dict = {}
+        # Per-junction routing overrides (dict[junction_id -> list[list[float]]]).
+        self._junction_overrides: dict = {}
 
         # --- Toolbar row: preset + model + run ---
         toolbar = QWidget()
@@ -74,6 +100,15 @@ class CATab(QWidget):
         self.run_button = QPushButton("Run")
         self.run_button.setMinimumWidth(120)
         toolbar_row.addWidget(self.run_button)
+        toolbar_row.addSpacing(12)
+        self.fd_button = QPushButton("Run FD sweep")
+        self.fd_button.setMinimumWidth(140)
+        self.fd_button.setToolTip(
+            "Run a TASEP fundamental-diagram sweep (α with β=1, β with α=1) "
+            "using pure-Python analysis.fundamental_diagram(). Populates the "
+            "Fundamental Diagram plot tab when finished."
+        )
+        toolbar_row.addWidget(self.fd_button)
         toolbar_row.addStretch(1)
 
         # --- Left: params (scrollable, capped height) + network preview (fills rest) ---
@@ -116,15 +151,45 @@ class CATab(QWidget):
         self.model_combo.currentTextChanged.connect(lambda _m: None)  # no rebuild needed
         self.param_form.params_changed.connect(self._rebuild_spec)
         self.run_button.clicked.connect(self._on_run)
+        self.fd_button.clicked.connect(self._on_run_fd)
         self.network_widget.road_clicked.connect(self._on_road_clicked)
+        self.network_widget.junction_clicked.connect(self._on_junction_clicked)
 
-        # Bootstrap with the first preset.
+        # Bootstrap with the first preset (also greys out TASEP if needed).
+        self._sync_model_availability()
         self._rebuild_spec()
 
     def _on_preset_changed_ca(self, name: str):
-        """Reset per-road overrides whenever the preset changes, then rebuild."""
+        """Reset per-road and per-junction overrides on preset change, then rebuild."""
         self._road_overrides = {}
+        self._junction_overrides = {}
+        self._sync_model_availability()
         self._rebuild_spec()
+
+    def _sync_model_availability(self):
+        """Grey out TASEP for any preset where it is not physically meaningful.
+
+        TASEP is a strict 1D single-lane chain — anything with multiple lanes
+        or junctions falls outside its definition.
+        """
+        name = self.preset_combo.currentText()
+        tasep_ok = name in TASEP_OK_PRESETS
+        # Find the TASEP entry in the combo and toggle its enabled flag.
+        idx = self.model_combo.findText("TASEP")
+        if idx >= 0:
+            model = self.model_combo.model()
+            item = model.item(idx)
+            if item is not None:
+                # Qt.ItemIsEnabled = 32; remove or add it to control greying.
+                if tasep_ok:
+                    item.setFlags(item.flags() | Qt.ItemIsEnabled)
+                else:
+                    item.setFlags(item.flags() & ~Qt.ItemIsEnabled)
+        # If TASEP is now disabled but currently selected, switch to NS.
+        if not tasep_ok and self.model_combo.currentText() == "TASEP":
+            ns_idx = self.model_combo.findText("NS")
+            if ns_idx >= 0:
+                self.model_combo.setCurrentIndex(ns_idx)
 
     def _rebuild_spec(self, *_args):
         name = self.preset_combo.currentText()
@@ -148,6 +213,12 @@ class CATab(QWidget):
                     ln.beta = ov["beta"]
             if ov.get("length") is not None:
                 road.length = ov["length"]
+        # Apply any per-junction routing overrides.
+        for jid, routes in self._junction_overrides.items():
+            j = next((j for j in spec.junctions if j.id == jid), None)
+            if j is None:
+                continue
+            j.routes = [list(row) for row in routes]
         self._current_spec = spec
         self._current_layout = layout
         self.network_widget.set_network(spec, layout)
@@ -179,6 +250,26 @@ class CATab(QWidget):
             self.log.emit(
                 f"R{road_id} overridden: α={vals['alpha']}  β={vals['beta']}  L={vals['length']}"
             )
+
+    def _on_junction_clicked(self, junction_id: int):
+        """Open the junction routing editor and apply any changes."""
+        if self._current_spec is None:
+            return
+        j = next((j for j in self._current_spec.junctions if j.id == junction_id), None)
+        if j is None or not j.routes:
+            self.log.emit(f"J{junction_id}: no routing matrix to edit")
+            return
+
+        dlg = JunctionEditDialog(junction_id, j.routes, parent=self)
+        if dlg.exec_() == JunctionEditDialog.Accepted:
+            new_routes = dlg.routes()
+            self._junction_overrides[junction_id] = new_routes
+            self._rebuild_spec()
+            summary = "  ".join(
+                "[" + ", ".join(f"{v:.2f}" for v in row) + "]"
+                for row in new_routes
+            )
+            self.log.emit(f"J{junction_id} routes overridden: {summary}")
 
     def _on_run(self):
         if self._current_spec is None or self._current_layout is None:
@@ -214,6 +305,40 @@ class CATab(QWidget):
         if msg:
             self.log.emit(msg)
 
+    # ------------------------------------------------------------------
+    # Fundamental-diagram sweep (pure-Python TASEP)
+    # ------------------------------------------------------------------
+
+    def _on_run_fd(self):
+        if self._fd_runner is not None and self._fd_runner.isRunning():
+            return
+        L = 50
+        n_points = 30
+        self.fd_button.setEnabled(False)
+        self.status.emit(f"running FD sweep L={L} ({2 * n_points} points)…")
+        self.log.emit(f"--- FD sweep L={L} points={n_points} ---")
+        self._fd_runner = FDSweepThread(L=L, n_points=n_points, parent=self)
+        self._fd_runner.finished_ok.connect(self._on_fd_ok)
+        self._fd_runner.finished_error.connect(self._on_fd_error)
+        self._fd_runner.start()
+
+    def _on_fd_ok(self, rho, J, L, n_points):
+        self.fd_button.setEnabled(True)
+        self.status.emit(f"FD sweep done — {len(rho)} points")
+        self.log.emit(
+            f"FD sweep complete: L={L}, {len(rho)} points  "
+            f"(ρ range {float(rho.min()):.2f}–{float(rho.max()):.2f}, "
+            f"J range {float(J.min()):.3f}–{float(J.max()):.3f})"
+        )
+        self.plot_panel.set_fd_sweep(rho, J, title=f"Fundamental diagram  (L={L})")
+
+    def _on_fd_error(self, err: str):
+        self.fd_button.setEnabled(True)
+        self.status.emit("FD sweep error")
+        self.log.emit(f"FD ERROR: {err}")
+
+    # ------------------------------------------------------------------
+
     def _on_finished_ok(self, nc_path: str):
         self.progress.emit(100)
         self.status.emit(f"done — {nc_path}")
@@ -222,8 +347,29 @@ class CATab(QWidget):
         try:
             result = load_network_netcdf(nc_path)
             self.plot_panel.show_result(result)
+            self._log_diagnostics(result)
         except Exception as exc:
             self.log.emit(f"plot error: {exc}")
+
+    def _log_diagnostics(self, result):
+        """Print per-road steady-state ρ̄ and J̄ to the run log."""
+        import numpy as np
+        n_steps, n_roads = result.road_density.shape
+        # Average over the second half of the run to skip the transient.
+        half = max(1, n_steps // 2)
+        lane_road = np.asarray(result.lane_road_id)
+
+        self.log.emit("--- diagnostics (steady-state averages, last half of run) ---")
+        for r in range(n_roads):
+            rho_bar = float(result.road_density[half:, r].mean())
+            n_lanes = max(1, int(np.sum(lane_road == r + 1)))
+            J_bar = float(result.road_exits[half:, r].mean()) / n_lanes
+            total_in  = int(result.road_entries[:, r].sum())
+            total_out = int(result.road_exits[:, r].sum())
+            self.log.emit(
+                f"  R{r + 1}: <ρ>={rho_bar:.3f}  <J>={J_bar:.3f}  "
+                f"(in={total_in}, out={total_out}, lanes={n_lanes})"
+            )
 
     def _on_finished_error(self, err: str):
         self.status.emit("error")
@@ -234,6 +380,9 @@ class CATab(QWidget):
         if self._runner is not None and self._runner.isRunning():
             self._runner.requestInterruption()
             self._runner.wait(2000)
+        if self._fd_runner is not None and self._fd_runner.isRunning():
+            self._fd_runner.requestInterruption()
+            self._fd_runner.wait(2000)
 
 
 class PDETab(QWidget):
@@ -390,14 +539,15 @@ class MainWindow(QMainWindow):
 
         # --- Top tabs: CA / PDE ---
         self.tabs = QTabWidget()
+        # Scope styling to *this* widget only (use objectName selector) so it
+        # doesn't cascade into the inner plot-panel tab widgets.
+        self.tabs.setObjectName("mainTabs")
         self.tabs.setStyleSheet("""
-            QTabBar::tab {
-                min-width: 220px; min-height: 38px;
+            QTabWidget#mainTabs > QTabBar::tab {
+                min-width: 220px; min-height: 30px;
                 font-size: 13px; font-weight: bold;
                 padding: 4px 16px;
             }
-            QTabBar::tab:selected { background: #cce4ff; }
-            QTabBar::tab:!selected { background: #e8e8e8; }
         """)
         self.ca_tab = CATab(Path(binary), Path(output_dir))
         self.pde_tab = PDETab(Path(pde_binary), Path(pde_output_dir))

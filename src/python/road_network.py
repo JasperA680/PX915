@@ -124,10 +124,8 @@ def validate(spec: NetworkSpec) -> None:
     road_by_id = {r.id: r for r in spec.roads}
 
     for r in spec.roads:
-        if not (1 <= len(r.lanes) <= 2):
-            raise ValueError(f"road {r.id}: lanes per road must be 1 or 2")
-        if len(r.lanes) == 2 and r.lanes[0].flow_direction == r.lanes[1].flow_direction:
-            raise ValueError(f"road {r.id}: bidirectional road must have distinct flow_directions")
+        if len(r.lanes) < 1:
+            raise ValueError(f"road {r.id}: must have at least one lane")
 
     for j in spec.junctions:
         if len(j.in_legs) != j.n_in:
@@ -202,6 +200,28 @@ def single_lane(L: int = 50, alpha: float = 0.5, beta: float = 0.5) -> Tuple[Net
     road = RoadSpec(
         id=1, end_junction=(0, 0),
         lanes=[LaneSpec(L, +1, alpha=alpha, beta=beta, open_in=True, open_out=True)],
+    )
+    spec = NetworkSpec(roads=[road], junctions=[])
+    layout = LayoutSpec(road_endpoints={1: ((0.0, 0.0), (1.0, 0.0))})
+    return spec, layout
+
+
+def two_lane(L: int = 50, alpha: float = 0.5, beta: float = 0.5) -> Tuple[NetworkSpec, LayoutSpec]:
+    """Two parallel same-direction NS lanes on a single road (lane-changing baseline).
+
+    Both lanes flow left→right (+1), both have open inflow at end 1 and open
+    outflow at end 2.  Matches the Fortran ``init_test_net`` configuration used
+    by ``tests/test_lane_change.f90`` — same-direction multi-lane roads are
+    supported by the Fortran lane-change module.
+
+    TASEP is not appropriate for this geometry — it is a single-chain process.
+    """
+    road = RoadSpec(
+        id=1, end_junction=(0, 0),
+        lanes=[
+            LaneSpec(L, +1, alpha=alpha, beta=beta, open_in=True, open_out=True),
+            LaneSpec(L, +1, alpha=alpha, beta=beta, open_in=True, open_out=True),
+        ],
     )
     spec = NetworkSpec(roads=[road], junctions=[])
     layout = LayoutSpec(road_endpoints={1: ((0.0, 0.0), (1.0, 0.0))})
@@ -429,6 +449,7 @@ def town(L: int = 15, alpha: float = 0.35, beta: float = 0.5,
 
 PRESETS = {
     "single_lane": single_lane,
+    "two_lane":    two_lane,
     "crossroads":  crossroads,
     "roundabout":  roundabout,
     "town":        town,

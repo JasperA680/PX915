@@ -16,9 +16,9 @@ from matplotlib.figure import Figure
 from python.io import NetworkResult
 from python.visualisation import (
     plot_network_density,
-    plot_network_currents,
     plot_network_spacetime,
     plot_network_layout,
+    plot_fundamental_diagram,
 )
 
 
@@ -138,34 +138,42 @@ class _DensityTab(_CanvasTab):
         self.canvas.draw_idle()
 
 
-class _CurrentsTab(_CanvasTab):
+class _FundamentalDiagramTab(_CanvasTab):
+    """Plot of J vs ρ from a TASEP parameter sweep.
+
+    A single (α, β) run is one point in J–ρ space; the full diagram requires
+    a sweep over α (with β=1) and β (with α=1).  Use the toolbar's
+    "Run FD sweep" button to populate this tab.  Plotted via the same
+    ``plot_fundamental_diagram`` function used by scripts/run_fundamental_diagram.py.
+    """
+
     def __init__(self, parent=None):
         super().__init__(parent)
-        row = QHBoxLayout()
-        row.addWidget(QLabel("Roads:"))
-        self.road_selector = _CheckableComboBox()
-        self.road_selector.setMinimumWidth(140)
-        row.addWidget(self.road_selector)
-        row.addStretch(1)
-        self._layout.insertLayout(0, row)
-        self._result: Optional[NetworkResult] = None
-        self.road_selector.selectionChanged.connect(self._refresh)
+        self._show_placeholder()
 
-    def set_result(self, result: NetworkResult):
-        self._result = result
-        n_roads = result.road_exits.shape[1]
-        self.road_selector.selectionChanged.disconnect(self._refresh)
-        self.road_selector.populate([f"R{r + 1}" for r in range(n_roads)])
-        self.road_selector.selectionChanged.connect(self._refresh)
-        self._refresh()
+    def _show_placeholder(self):
+        self.figure.clear()
+        ax = self.figure.add_subplot(111)
+        ax.text(
+            0.5, 0.5,
+            "Fundamental diagram\n\n"
+            "A J–ρ diagram requires a parameter sweep over α (or β),\n"
+            "not a single simulation run.\n\n"
+            "Click 'Run FD sweep' on the toolbar to populate this plot.",
+            ha="center", va="center",
+            transform=ax.transAxes,
+            fontsize=11, color="gray",
+        )
+        ax.set_axis_off()
+        self.ax = ax
+        self.canvas.draw_idle()
 
-    def _refresh(self):
-        if self._result is None:
-            return
-        selected = self.road_selector.checked_indices()
-        self.ax.clear()
-        plot_network_currents(self._result, ax=self.ax,
-                              road_ids=selected if selected else None)
+    def set_sweep(self, rho, J, title: str = None):
+        """Populate the FD scatter from a parameter sweep."""
+        self.figure.clear()
+        ax = self.figure.add_subplot(111)
+        plot_fundamental_diagram(rho, J, ax=ax, title=title)
+        self.ax = ax
         self.canvas.draw_idle()
 
 
@@ -282,25 +290,34 @@ class _HeatmapTab(_CanvasTab):
 # ---------------------------------------------------------------------------
 
 class PlotPanel(QTabWidget):
+    # Index of the Fundamental Diagram tab; disabled until a sweep populates it.
+    FD_TAB_INDEX = 3
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.tab_density = _DensityTab()
-        self.tab_currents = _CurrentsTab()
         self.tab_spacetime = _SpacetimeTab()
         self.tab_heatmap = _HeatmapTab()
+        self.tab_fd = _FundamentalDiagramTab()
         self.addTab(self.tab_density,   "Density")
-        self.addTab(self.tab_currents,  "Currents")
         self.addTab(self.tab_spacetime, "Space-time")
         self.addTab(self.tab_heatmap,   "Network heatmap")
+        self.addTab(self.tab_fd,        "Fundamental diagram")
+        # FD tab disabled until a sweep populates it.
+        self.setTabEnabled(self.FD_TAB_INDEX, False)
 
     def clear(self):
         self.tab_density.clear()
-        self.tab_currents.clear()
         self.tab_spacetime.clear()
         self.tab_heatmap.clear()
 
     def show_result(self, result: NetworkResult):
         self.tab_density.set_result(result)
-        self.tab_currents.set_result(result)
         self.tab_spacetime.set_result(result)
         self.tab_heatmap.set_result(result)
+
+    def set_fd_sweep(self, rho, J, title: str = None):
+        """Populate the FD tab with a sweep result and enable it."""
+        self.tab_fd.set_sweep(rho, J, title=title)
+        self.setTabEnabled(self.FD_TAB_INDEX, True)
+        self.setCurrentIndex(self.FD_TAB_INDEX)

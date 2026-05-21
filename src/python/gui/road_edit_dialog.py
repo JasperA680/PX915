@@ -1,13 +1,13 @@
-"""Dialog for editing per-road parameters (α, β, length).
+"""Dialogs for editing per-road and per-junction parameters.
 
-Opens when the user clicks a road in the NetworkWidget preview.
+Opens when the user clicks a road or junction in the NetworkWidget preview.
 """
 
 from __future__ import annotations
 
 from PyQt5.QtWidgets import (
     QDialog, QDialogButtonBox, QFormLayout, QDoubleSpinBox, QSpinBox,
-    QVBoxLayout, QLabel,
+    QVBoxLayout, QHBoxLayout, QLabel, QGridLayout, QGroupBox,
 )
 
 _BIG_INT = 2_000_000_000
@@ -66,3 +66,82 @@ class RoadEditDialog(QDialog):
             beta=float(self.beta_box.value()) if self.beta_box else None,
             length=int(self.length_box.value()),
         )
+
+
+class JunctionEditDialog(QDialog):
+    """Editor for a junction's routing matrix.
+
+    The matrix has ``n_in`` rows (one per inbound leg) and ``n_out`` columns
+    (one per outbound leg).  Each row should sum to 1.  We don't auto-enforce
+    that — the user can normalise via the "Normalise rows" button or just type
+    values that sum to 1.
+    """
+
+    def __init__(self, junction_id: int, routes, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle(f"Edit Junction J{junction_id} routing")
+        self.setMinimumWidth(360)
+        self._n_in  = len(routes)
+        self._n_out = len(routes[0]) if routes else 0
+        self._boxes: list = []   # [[spinbox, …], …] in row-major order
+
+        info = QLabel(
+            f"Routing matrix: {self._n_in} inbound × {self._n_out} outbound legs.\n"
+            "Each row is the probability of an incoming vehicle taking each\n"
+            "outbound leg.  Rows should sum to 1.0."
+        )
+        info.setWordWrap(True)
+
+        grid_group = QGroupBox("Routes  (rows = incoming leg, cols = outgoing leg)")
+        grid = QGridLayout(grid_group)
+        # Column headers
+        for c in range(self._n_out):
+            grid.addWidget(QLabel(f"→ out {c + 1}"), 0, c + 1)
+        for r in range(self._n_in):
+            grid.addWidget(QLabel(f"in {r + 1}"), r + 1, 0)
+            row_boxes = []
+            for c in range(self._n_out):
+                sb = QDoubleSpinBox()
+                sb.setRange(0.0, 1.0)
+                sb.setSingleStep(0.05)
+                sb.setDecimals(3)
+                sb.setValue(float(routes[r][c]))
+                grid.addWidget(sb, r + 1, c + 1)
+                row_boxes.append(sb)
+            self._boxes.append(row_boxes)
+
+        normalise_btn = QDialogButtonBox(QDialogButtonBox.NoButton)
+        from PyQt5.QtWidgets import QPushButton
+        norm_pb = QPushButton("Normalise rows to sum=1")
+        norm_pb.clicked.connect(self._normalise)
+        normalise_btn.addButton(norm_pb, QDialogButtonBox.ActionRole)
+
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+
+        outer = QVBoxLayout(self)
+        outer.addWidget(info)
+        outer.addWidget(grid_group)
+        outer.addWidget(normalise_btn)
+        outer.addWidget(buttons)
+
+    def _normalise(self):
+        for row in self._boxes:
+            total = sum(b.value() for b in row)
+            if total <= 0:
+                # Set uniform 1/n distribution.
+                v = 1.0 / max(1, len(row))
+                for b in row:
+                    b.blockSignals(True)
+                    b.setValue(v)
+                    b.blockSignals(False)
+            else:
+                for b in row:
+                    b.blockSignals(True)
+                    b.setValue(b.value() / total)
+                    b.blockSignals(False)
+
+    def routes(self) -> list:
+        """Return the edited routing matrix as a list of lists of floats."""
+        return [[float(b.value()) for b in row] for row in self._boxes]

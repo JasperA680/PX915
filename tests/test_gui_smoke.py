@@ -43,7 +43,6 @@ def run_one_preset(win: MainWindow, preset: str):
         f"{preset}: network preview is empty before run"
 
     tab.param_form.n_steps.setValue(150)
-    tab.param_form.lane_length.setValue(12)
 
     loop = QEventLoop()
     state = {"ok": False, "err": None, "path": None}
@@ -103,12 +102,23 @@ def main():
     # Default model is NS.
     assert win.ca_tab.model_combo.currentText() == "NS"
 
-    for preset in ("single_lane", "crossroads", "roundabout", "town"):
+    for preset in ("single_lane", "two_lane", "crossroads", "roundabout", "town"):
         run_one_preset(win, preset)
 
-    # TASEP path should be rejected by the Fortran driver.
+    # TASEP should be greyed out for non-single-lane presets.
+    win.ca_tab.preset_combo.setCurrentText("two_lane")
+    tasep_idx = win.ca_tab.model_combo.findText("TASEP")
+    tasep_item = win.ca_tab.model_combo.model().item(tasep_idx)
+    assert tasep_item is not None and not (tasep_item.flags() & 0x20), \
+        "TASEP should be disabled in the model combo when two_lane is selected"
+    assert win.ca_tab.model_combo.currentText() == "NS", \
+        "model should auto-switch to NS when TASEP is disabled"
+    print("--- TASEP grey-out: PASS ---")
+
+    # TASEP path should be rejected by the Fortran driver (use single_lane
+    # so TASEP is still enabled in the combo).
     print("--- TASEP rejection ---")
-    win.ca_tab.preset_combo.setCurrentText("crossroads")
+    win.ca_tab.preset_combo.setCurrentText("single_lane")
     win.ca_tab.model_combo.setCurrentText("TASEP")
     win.ca_tab.param_form.n_steps.setValue(50)
 
