@@ -5,7 +5,11 @@ module NS_model
     ! by one step under the rules of a Nagel-Schreckenberg model.
     !
     ! These rules are applied sequentially as follows:
-    ! # Acceleration: The cars increase their velocity as :math:`v_i^{t+1/3}`
+    !
+    !   1. Acceleration: The cars increase their velocity by 1, up to the speed limit, :math:`v_i^{(t+\frac{1}{3})} = \text{min}(v_i^t+1, v_{max})`
+    !   2. Deceleration: The cars break if their velocity would cause a collision with the car in front, :math:`v_i^{(t+\frac{2}{3})} = \text{min}(v_i^{(t+\frac{1}{3})}, g_i^t)`
+    !   3. Randomisation: With a random chance P, the cars decrease their velocity by 1, :math:`v_i^{(t+1)} = \text{max}(v_i^{(t+\frac{2}{3})}-1, 0)`
+    ! The cars then update their positions, :math:`x^{(t+1)}_i = x_i^t + v_i^{(t+1)}`
 
 
     use vehicle_mod
@@ -21,13 +25,16 @@ contains
     
     subroutine NS_model_step(net, v_max, p_slow)
         ! Per-lane Nagel-Schreckenberg step for the networked model.
+        ! Takes a road network as input, and updates all car positions in-place for one step.
         !
         ! Inbound lane (junction at site L, open at site 1):
+        !
         !   * Bulk hops use old state; site L is NOT explicitly exited here
         !     (the junction step handles that).
         !   * Open inflow at site 1 with alpha and stochastic indicator.
         !
         ! Outbound lane (junction at site 1, open at site L):
+        !
         !   * Bulk hops use old state.
         !   * Open outflow at site L with beta.
         !   * Site 1 is NOT entered here (junction step places vehicles there).
