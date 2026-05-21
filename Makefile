@@ -37,7 +37,7 @@ NETWORK_IO_SRC      = $(SRC_DIR)/network_io.f90
 RUN_NETWORK_SRC     = $(SRC_DIR)/run_network.f90
 
 NETWORK_LIB_SRC = $(VEHICLE_SRC) $(NETWORK_SRC) $(NETWORK_INIT_SRC) \
-                  $(LANE_CHANGE_SRC) $(JUNCTION_SRC) $(NET_SIM_SRC)
+                  $(LANE_CHANGE_SRC) $(JUNCTION_SRC) $(NS_MODEL_SRC) $(NET_SIM_SRC)
 
 # PDE source files (pde_flux and pde_lanechange must precede pde_module due to USE deps)
 PDE_FLUX_SRC = $(SRC_DIR)/pde_flux.f90
@@ -74,6 +74,7 @@ PDE_RIGHT  ?= 0.9
 PDE_IC     ?= riemann
 PDE_FLUX   ?= lf
 PDE_BC     ?= open
+PDE_VLIMIT ?= 1.0
 PDE_OUT    ?= data/output/pde_simulation.nc
 
 # Default target: build all executables
@@ -120,7 +121,7 @@ run-fd: $(FUND_EXE)
 	./$(FUND_EXE)
 
 run-pde: $(PDE_EXE)
-	./$(PDE_EXE) $(PDE_M) $(PDE_STEPS) $(PDE_VMAX) $(PDE_RHOMAX) $(PDE_LEFT) $(PDE_RIGHT) $(PDE_IC) $(PDE_FLUX) $(PDE_BC) $(PDE_OUT)
+	./$(PDE_EXE) $(PDE_M) $(PDE_STEPS) $(PDE_VMAX) $(PDE_RHOMAX) $(PDE_LEFT) $(PDE_RIGHT) $(PDE_IC) $(PDE_FLUX) $(PDE_BC) $(PDE_VLIMIT) $(PDE_OUT)
 
 # Run the Phase 1 smoke test
 run_test_types: test_types

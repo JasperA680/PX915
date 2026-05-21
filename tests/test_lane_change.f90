@@ -419,7 +419,7 @@ contains
             entries = 0
             exits   = 0
 
-            call network_step(net, LC_SYMMETRIC, 1.0)
+            call network_step(net, "NS", LC_SYMMETRIC, 1.0)
 
             n_new = count_occupied_network(net)
             do r = 1, size(net%roads)

@@ -39,6 +39,10 @@ program run_network
     integer, allocatable :: seed_arr(:)
     integer :: seed_size
 
+    ! LANE CHANGING PARAMETERS - CURRENTLY HARDCODED
+    integer, parameter   :: lane_change_model = -1           ! Defines what logic to use for lane changes: -1=DISABLED, 0=SYMMETRIC, 1=ASYMMETRIC
+    real,    parameter   :: lane_change_prob = 1             ! Probability a car will switch lanes, given it meets other requirements
+
     argc = command_argument_count()
     if (argc < 2) then
         write(*,*) "usage: run_network <config.json> <out.nc>"
@@ -53,15 +57,6 @@ program run_network
     ! Read config and also retain the raw JSON text for the NC attribute.
     call read_config(trim(config_path), spec, params)
     call load_text_file(trim(config_path), config_json)
-
-    ! Model dispatch: only NS is currently implemented.  The schema and JSON
-    ! carry a `model` field so future TASEP / other CA rules can plug in
-    ! without breaking the config format.
-    if (trim(params%model) /= "NS") then
-        write(*,'(a,a,a)') "ERROR: model '", trim(params%model), &
-            "' not yet implemented; pick 'NS' (Nagel-Schreckenberg)."
-        stop 1
-    end if
 
     n_steps = params%n_steps
 
@@ -117,7 +112,7 @@ program run_network
 
     ! ----- Simulation loop -----
     do step = 1, n_steps
-        call network_step(net, params%lc_model, params%lc_p_change)
+        call network_step(net, params%model, params%lc_model, params%lc_p_change)
 
         ! Record state and per-road counters.
         do r = 1, n_roads

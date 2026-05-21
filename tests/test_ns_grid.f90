@@ -23,7 +23,7 @@ program test_ns_grid
     call print_state(net, 0)
 
     do step = 1, N_STEPS
-        call network_step(net)
+        call network_step(net, "NS")
         call check_step(net, step)
         call print_state(net, step)
     end do

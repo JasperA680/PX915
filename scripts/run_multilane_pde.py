@@ -1,19 +1,21 @@
 """Run and visualise multi-lane LWR PDE simulations.
 
-Four scenarios:
+Five scenarios:
 
   A) Independent lanes (k=0)    — staggered IC, lanes stay different forever
   B) Coupled lanes (k=0.5)      — same IC, lanes equilibrate via lane changing
   C) Conservation check         — periodic sine IC, total mass must stay flat
   D) Fast/slow lanes (k=0.5)    — lane 1 v_max=1.0, lane 2 v_max=1.5;
                                    slow lane ends up denser, fast lane has higher flow
+  E) Speed limit + fast/slow    — v_limit=0.6 caps both lanes; free-flow Δv vanishes
+                                   so lane-changing is suppressed until congestion builds
 
 Usage
 -----
-    python scripts/run_multilane_pde.py           # build, run all four, display
+    python scripts/run_multilane_pde.py           # build, run all five, display
     python scripts/run_multilane_pde.py --save    # also save to plots/
     python scripts/run_multilane_pde.py --no-run  # re-plot existing .nc files
-    python scripts/run_multilane_pde.py --scenario D  # single scenario
+    python scripts/run_multilane_pde.py --scenario E  # single scenario
 """
 
 import argparse
@@ -91,6 +93,22 @@ SCENARIOS = {
         M=200, n_steps=1200,
         label="Fast/slow lanes  (v=[1.0,1.5], k=0.5)  —  fast lane fills up",
     ),
+    # Speed limit + fast/slow lanes.
+    # v_limit=0.6, v_max_lane2=1.5.  rho* = rho_max*(1 - v_limit/v_max) = 0.4.
+    # Below rho*: both lanes travel at v_limit → Δv = 0 → no lane-change incentive.
+    # Above rho*: speed limit inactive → normal asymmetric exchange resumes.
+    # Staggered IC (lane1 dense, lane2 sparse) so the contrast is visible early.
+    "E_speed_limit": dict(
+        n_lanes=2, lane_change_rate=0.5,
+        v_max=1.0, rho_max=1.0,
+        v_limit=0.6,
+        v_max_lanes=[1.0, 1.5],
+        rho_left_bc=0.2, rho_right_bc=0.7,
+        ic_type="staggered", flux_type="godunov", bc_type="periodic",
+        M=200, n_steps=1200,
+        label="Speed limit  (v_limit=0.6, v=[1.0,1.5], k=0.5)\n"
+              "—  limit suppresses switching in free-flow zone (ρ < ρ*=0.4)",
+    ),
 }
 
 
@@ -125,6 +143,10 @@ def plot_scenario(key, label, data, save_dir=None):
     rho_max = float(attrs.get("rho_max", 1.0))
 
     # Per-lane heatmaps
+    v_limit = attrs.get("v_limit", None)
+    v_max_g = float(attrs.get("v_max", 1.0))
+    rho_star = rho_max * (1.0 - float(v_limit) / v_max_g) if v_limit is not None else None
+
     for lane_idx, ax in enumerate([ax_l1, ax_l2]):
         if lane_idx < n_lanes:
             im = ax.imshow(
@@ -135,7 +157,10 @@ def plot_scenario(key, label, data, save_dir=None):
             )
             plt.colorbar(im, ax=ax, label="ρ")
             ax.set_xlabel("x"); ax.set_ylabel("t")
-            ax.set_title(f"Lane {lane_idx + 1}  ρ(x, t)")
+            title = f"Lane {lane_idx + 1}  ρ(x, t)"
+            if rho_star is not None:
+                title += f"\n(v_limit={float(v_limit):.2f}, ρ*={rho_star:.2f})"
+            ax.set_title(title, fontsize=9)
         else:
             ax.set_visible(False)
 

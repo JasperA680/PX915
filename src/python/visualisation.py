@@ -633,6 +633,97 @@ def plot_network_spacetime(result, road_id: int, ax=None, title=None,
     return fig, ax
 
 
+def plot_speed_limit_comparison(panel_datasets, save_path=None):
+    """Four-panel figure comparing shock behaviour under different speed limits.
+
+    Parameters
+    ----------
+    panel_datasets:
+        List of (label, datasets) tuples, one per panel (e.g. 4 panels for
+        Greenshields-LF, Greenshields-Godunov, Newell-LF, Newell-Godunov).
+        Each `datasets` is a list of (v_limit, data_dict) tuples where
+        data_dict is the return value of load_pde_netcdf.
+    save_path:
+        Optional path to save the figure.
+
+    The figure shows, for each panel:
+        • Left half: fundamental diagram curves colour-coded by v_limit
+        • Right half (main area): final-time density profiles, one per v_limit
+    """
+    from pde_runner import (
+        q_of_rho, q_newell, rho_critical, rho_critical_newell, NEWELL_W,
+    )
+
+    n_panels = len(panel_datasets)
+    ncols = 2
+    nrows = (n_panels + 1) // 2
+
+    fig = plt.figure(figsize=(7 * ncols, 4.5 * nrows))
+    gs_outer = fig.add_gridspec(nrows, ncols, hspace=0.52, wspace=0.38)
+
+    for panel_idx, (label, datasets) in enumerate(panel_datasets):
+        row = panel_idx // ncols
+        col = panel_idx % ncols
+        gs_inner = gs_outer[row, col].subgridspec(1, 2, wspace=0.45, width_ratios=[1, 1.6])
+        ax_fd   = fig.add_subplot(gs_inner[0])
+        ax_snap = fig.add_subplot(gs_inner[1])
+
+        # attrs from the first dataset (shared params)
+        attrs   = datasets[0][1]['attrs']
+        v_max   = float(attrs.get('v_max',   1.0))
+        rho_max = float(attrs.get('rho_max', 1.0))
+        closure = str(attrs.get('flux_type', ''))
+        is_newell = ('newell' in closure)
+
+        n_vl   = len(datasets)
+        colors = plt.cm.plasma(np.linspace(0.15, 0.85, n_vl))
+
+        rho_plot = np.linspace(0, rho_max, 400)
+
+        for (v_limit, data), color in zip(datasets, colors):
+            vl_label = f'$v_{{lim}}={v_limit:.2f}$'
+
+            # --- fundamental diagram ---
+            if is_newell:
+                q_plot = q_newell(rho_plot, rho_max, v_limit)
+                rc = rho_critical_newell(rho_max, v_limit)
+            else:
+                q_plot = q_of_rho(rho_plot, v_max, rho_max, v_limit)
+                rc = rho_critical(rho_max)
+            ax_fd.plot(rho_plot, q_plot, color=color, linewidth=1.4, label=vl_label)
+            ax_fd.axvline(rc, color=color, linewidth=0.7, linestyle=':')
+
+            # --- final-time density snapshot ---
+            density = data['density']
+            x       = data['x']
+            ax_snap.plot(x, density[-1], color=color, linewidth=1.4, label=vl_label)
+
+        n_steps = attrs.get('n_steps', '?')
+        ic      = attrs.get('ic_type', '?')
+
+        ax_fd.set_xlabel('Density ρ', fontsize=9)
+        ax_fd.set_ylabel('Flow q', fontsize=9)
+        ax_fd.set_xlim(0, rho_max)
+        ax_fd.set_ylim(0)
+        ax_fd.set_title(f'{label}\nFundamental diagrams', fontsize=9, fontweight='bold')
+        ax_fd.legend(fontsize=7, loc='upper right')
+
+        ax_snap.set_xlabel('Position x', fontsize=9)
+        ax_snap.set_ylabel('Density ρ', fontsize=9)
+        ax_snap.set_xlim(float(datasets[0][1]['x'][0]), float(datasets[0][1]['x'][-1]))
+        ax_snap.set_ylim(-0.02, rho_max * 1.08)
+        ax_snap.set_title(f'Final density  (IC: {ic}, steps: {n_steps})', fontsize=9)
+        ax_snap.legend(fontsize=7, loc='best')
+
+    fig.suptitle('Speed limit comparison — shock behaviour', fontsize=13, y=1.01)
+
+    if save_path:
+        fig.savefig(save_path, dpi=150, bbox_inches='tight')
+        print(f'Saved to {save_path}')
+
+    return fig
+
+
 def plot_network_summary(result, save_path: Optional[str] = None):
     """Four-panel summary: layout, density, currents, space-time of road 1."""
     fig = plt.figure(figsize=(14, 9))

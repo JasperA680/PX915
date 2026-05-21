@@ -1,12 +1,12 @@
 module lane_change_mod
     !--------------------------------------------------------------------
-    ! Lane-changing sub-step for the multi-lane Nagel-Schreckenberg model.
+    ! Lane-changing sub-step for the multi-lane Nagel-Schreckenberg lc_model.
     !
     ! Based on: Rickert, Nagel, Schreckenberg, Latour (1996),
     !           "Two lane traffic simulations using cellular automata",
     !           Physica A 231, 534-550.
     !
-    ! Two models are provided via the `model` integer parameter:
+    ! Two lc_models are provided via the `lc_model` integer parameter:
     !   LC_SYMMETRIC  (0) - both lanes treated equally; vehicle changes
     !                       only when blocked (T1 required for any move).
     !   LC_ASYMMETRIC (1) - vehicles always prefer the rightmost lane
@@ -39,7 +39,7 @@ module lane_change_mod
 
     ! Backward look-ahead distance = V_MAX: a following car at maximum
     ! velocity needs at least L_BACK+1 clear cells to avoid a collision.
-    integer, parameter :: L_BACK = 5
+    integer, parameter :: L_BACK = 5        ! This needs to be the same as V_MAX
 
     public :: apply_lane_changes
 
@@ -49,13 +49,13 @@ contains
     ! Apply one lane-change sub-step to every road in the network.
     ! Reads from lane%old (caller must have snapshotted), writes cells.
     !------------------------------------------------------------------
-    subroutine apply_lane_changes(net, model, p_change)
+    subroutine apply_lane_changes(net, lc_model, p_change)
         type(road_network_t), intent(inout) :: net
-        integer, intent(in) :: model
+        integer, intent(in) :: lc_model
         real,    intent(in) :: p_change
         integer :: r
         do r = 1, size(net%roads)
-            call road_lane_change(net%roads(r), model, p_change)
+            call road_lane_change(net%roads(r), lc_model, p_change)
         end do
     end subroutine apply_lane_changes
 
@@ -64,9 +64,9 @@ contains
     ! Iterates over all lanes and positions (excluding site L).
     ! Uses old state for all gap queries; writes to cells.
     !------------------------------------------------------------------
-    subroutine road_lane_change(road, model, p_change)
+    subroutine road_lane_change(road, lc_model, p_change)
         type(road_t), intent(inout) :: road
-        integer, intent(in) :: model
+        integer, intent(in) :: lc_model
         real,    intent(in) :: p_change
 
         integer :: n_lanes, k, L, i, v, tgt
@@ -94,8 +94,8 @@ contains
                 if (k > 1 .and. same_dir(road, k, k-1)) then
                     go_fwd  = other_fwd_gap(road%lane(k-1)%old, i, L)
                     go_back = other_back_gap(road%lane(k-1)%old, i)
-                    t2r = (go_fwd  > v + 1)
-                    t3r = (go_back > L_BACK)
+                    t2r = (go_fwd  > v + 1)                                 ! T2 - Is this vehicle going fast enough to cover the gap infront in the next step?
+                    t3r = (go_back > L_BACK)                                ! T3 - Is the vehicle behind in the target lane going slow enough to allow a merge?
                     want_right = t2r .and. t3r
                 end if
 
@@ -109,7 +109,7 @@ contains
                     want_left = t2l .and. t3l
                 end if
 
-                if (model == LC_ASYMMETRIC) then
+                if (lc_model == LC_ASYMMETRIC) then
                     ! Rightward return does not require T1.
                     ! Leftward pass requires T1 (blocked on current lane).
                     if (want_right) then

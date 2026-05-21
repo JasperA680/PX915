@@ -1,19 +1,48 @@
-"""Visualisation functions for the LWR PDE (continuum) model.
+'''Visualisation routines for the LWR PDE and multilane PDE models.
 
-All PDE-specific plots live here; CA/network plots are in visualisation.py.
-"""
+This module contains plotting functions for the continuum traffic flow models.
+The single lane routines visualise density fields, density snapshots, boundary 
+flow and fundamental diagrams. The multilane routines visualise per-lane 
+density fields, total density, lane density time series and total mass
+conservation.
+
+The expected input to most routines is the dictionary returned by 
+``load_pde_netcdf``. For single lane data, the density is expected to have shape 
+``(time, x)``. For multilane data, ``density_per_lane`` is expected to have 
+shape ``(time, lane, x)``.
+'''
 
 import numpy as np
 import matplotlib.pyplot as plt
 
 
 def plot_pde_spacetime(data, ax=None, title=None):
-    """Heatmap of ρ(x, t) — the primary visual diagnostic for the LWR PDE.
+    """Plot a space-time heatmap of the single lane PDE density.
 
-    data must be the dict returned by load_pde_netcdf:
-        density (n_steps+1, M), x (M,), time (n_steps+1,), attrs dict.
+    This is the main visual diagnostic for the LWR PDE solver. It shows the 
+    density field as a function of position and time.
+
+    Parameters
+    ----------
+    data : dict
+        Dictionary returned by ``load_pde_netCDF``. It must contain the keys 
+        ``"density"``, ``"x"``, ``"time"``, and ``"attrs"``. The density array
+        is expected to have shape ``(n_times, n_cells)``.
+    ax : matplotlib.axes.Axes, optional
+        Existing axes on which to draw the plot. If ``None``, a new figure and 
+        axes are created.
+    title : str, optional
+        Custom plot title. If ``None``, a title is generated from the initial 
+        condition and flux type stored in ``data["attrs"]``.
+    
+    Returns
+    -------
+    fig : matplotlib.figure.Figure
+        The figure object containing the plot.
+    ax : matplotlib.axes.Axes
+        The axes object on which the plot was drawn.
     """
-    density = data['density']   # (time, x)
+    density = data['density']   
     x       = data['x']
     time    = data['time']
     attrs   = data['attrs']
@@ -43,8 +72,33 @@ def plot_pde_spacetime(data, ax=None, title=None):
 
 
 def plot_pde_snapshots(data, n_snapshots=6, ax=None, title=None):
-    """Line plots of ρ(x) at n_snapshots evenly-spaced times."""
-    density = data['density']   # (time, x)
+    """Plot density profiles at evenly spaced times.
+
+    This function overlays several line plots of ``rho(x)`` so that the
+    temporal evolution of the density profile can be inspected.
+
+    Parameters
+    ----------
+    data : dict
+        Dictionary returned by ``load_pde_netcdf``. It must contain ``"density"``,
+        ``"x"``, ``"time"`` and ``"attrs"``.
+    n_snapshots : int, default=6
+        Number of time snapshots to plot.
+    ax : matplotlib.axes.Axes, optional
+        Existing axes on which to draw the plot. If ``None``, a new figure and
+        axes are created.
+    title : str, optional
+        Custom plot title. If ``None``, a title is generated from the initial
+        condition stored in ``data["attrs"]``.
+
+    Returns
+    -------
+    fig : matplotlib.figure.Figure
+        The figure object containing the plot.
+    ax : matplotlib.axes.Axes
+        The axes object on which the plot was drawn.
+    """
+    density = data['density']  
     x       = data['x']
     time    = data['time']
     attrs   = data['attrs']
@@ -72,7 +126,36 @@ def plot_pde_snapshots(data, n_snapshots=6, ax=None, title=None):
 
 
 def plot_pde_flow(data, ax=None, title=None):
-    """Right-boundary flow q(ρ_M) vs time."""
+    """Plot right-boundary flow as a function of time.
+
+    The flow history is compared with the theoretical maximum flow for the
+    selected fundamental diagram. For the Greenshields closure,
+
+    ``q_max = v_max * rho_max / 4``.
+
+    For the Newell-Daganzo triangular closure,
+
+    ``q_max = v_max * NEWELL_W * rho_max / (v_max + NEWELL_W)``.
+
+    Parameters
+    ----------
+
+    data : dict
+        Dictionary returned by ``load_pde_netcdf``. It must contain ``"flow"``,
+        ``"time"`` and ``"attrs"``.
+    ax : matplotlib.axes.Axes, optional
+        Existing axes on which to draw the plot. If ``None``, a new figure and
+        axes are created.
+    title : str, optional
+        Custom plot title. If ``None``, a default title is used.
+
+    Returns
+    -------
+    fig : matplotlib.figure.Figure
+        The figure object containing the plot.
+    ax : matplotlib.axes.Axes
+        The axes object on which the plot was drawn.
+    """
     flow  = data['flow']
     time  = data['time']
     attrs = data['attrs']
@@ -80,12 +163,9 @@ def plot_pde_flow(data, ax=None, title=None):
     rho_max   = float(attrs.get('rho_max', 1.0))
     flux_type = str(attrs.get('flux_type', 'lf'))
     if flux_type == 'newell':
-        # Newell: q_max = v_f * rho_c = v_f * w * rho_max / (v_f + w)
-        # NEWELL_W must match the Fortran constant in pde_flux.f90
         NEWELL_W = 0.5
         q_max = v_max * NEWELL_W * rho_max / (v_max + NEWELL_W)
     else:
-        # Greenshields: q_max = v_max * rho_max / 4
         q_max = v_max * rho_max / 4.0
 
     if ax is None:
@@ -105,7 +185,24 @@ def plot_pde_flow(data, ax=None, title=None):
 
 
 def plot_pde_summary(data, save_path=None):
-    """Three-panel PDE summary: space-time heatmap, density snapshots, boundary flow."""
+    """Create a three-panel summary figure for a single-lane PDE run.
+
+    The summary contains a space-time density heatmap, several density
+    snapshots, and the right-boundary flow history.
+
+    Parameters
+    ----------
+    data : dict
+        Dictionary returned by ``load_pde_netcdf``.
+    save_path : str or pathlib.Path, optional
+        If provided, the figure is saved to this location using
+        ``bbox_inches="tight"``.
+
+    Returns
+    -------
+    matplotlib.figure.Figure
+        Figure containing the three-panel PDE summary.
+    """
     attrs  = data['attrs']
     M      = attrs.get('M',        '?')
     n_steps = attrs.get('n_steps', '?')
@@ -137,14 +234,36 @@ def plot_pde_summary(data, save_path=None):
 
 
 def plot_pde_fundamental_diagram(rho, q, v_max=1.0, rho_max=1.0, ax=None, title=None):
-    """Flow q vs density ρ with the Greenshields analytical parabola overlaid.
+    """Plot a PDE fundamental diagram against the Greenshields curve.
+
+    The supplied density and flow samples are plotted as scatter points and
+    compared with the analytical Greenshields relation,
+
+    ``q(rho) = v_max * rho * (1 - rho/rho_max)``.
 
     Parameters
     ----------
-    rho, q : array-like
-        Sweep points from ``pde_fundamental_diagram()``.
-    v_max, rho_max : float
-        Greenshields parameters for the analytical curve.
+
+    rho : array-like
+        Density values from a PDE fundamental diagram sweep.
+    q : array-like
+        Flow values corresponding to ``rho``.
+    v_max : float, default=1.0
+        Maximum/free-flow velocity used in the analytical Greenshields curve.
+    rho_max : float, default=1.0
+        Maximum/jam density used in the analytical Greenshields curve.
+    ax : matplotlib.axes.Axes, optional
+        Existing axes on which to draw the plot. If ``None``, a new figure and
+        axes are created.
+    title : str, optional
+        Custom plot title. If ``None``, a default title is used.
+
+    Returns
+    -------
+    fig : matplotlib.figure.Figure
+        The figure object containing the plot.
+    ax : matplotlib.axes.Axes
+        The axes object on which the plot was drawn.
     """
     if ax is None:
         fig, ax = plt.subplots(figsize=(6, 5))
@@ -173,18 +292,36 @@ def plot_pde_fundamental_diagram(rho, q, v_max=1.0, rho_max=1.0, ax=None, title=
     return fig, ax
 
 
-# ---------------------------------------------------------------------------
-# Multi-lane PDE visualisation
-# ---------------------------------------------------------------------------
-
 def plot_space_time_per_lane(data, fig=None, title=None):
-    """N stacked heatmaps of ρ_lane(x, t), one subplot per lane.
+    """Plot one space-time density heatmap for each lane.
+
+    This function creates stacked heatmaps of the lane-resolved density field.
+    It is useful for checking how lane-changing redistributes density between
+    lanes over time.
 
     Parameters
     ----------
-    data : dict returned by load_pde_netcdf
+    data : dict
+        Dictionary returned by ``load_pde_netcdf`` for a multilane PDE run. It
+        must contain ``"density_per_lane"``, ``"x"``, ``"time"``, ``"attrs"``
+        and ``"n_lanes"``. The density array must have shape
+        ``(n_times, n_lanes, n_cells)``.
+
+    fig : matplotlib.figure.Figure, optional
+        Existing figure to draw into. If ``None``, a new figure and axes are
+        created.
+
+    title : str, optional
+        Custom figure title. If ``None``, a default title is used.
+
+     Returns
+    -------
+    fig : matplotlib.figure.Figure
+        The figure object containing the plot.
+    ax : matplotlib.axes.Axes
+        The axes object on which the plot was drawn.
     """
-    density_pl = data["density_per_lane"]   # (time, lane, x)
+    density_pl = data["density_per_lane"]   
     n_lanes    = density_pl.shape[1]
     x          = data["x"]
     time       = data["time"]
@@ -217,9 +354,34 @@ def plot_space_time_per_lane(data, fig=None, title=None):
 
 
 def plot_space_time_total(data, ax=None, title=None):
-    """Heatmap of total density ρ_tot(x, t) = Σ_lane ρ_lane(x, t)."""
+    """Plot a space-time heatmap of total density over all lanes.
+
+    The total density is defined as
+
+    ``rho_tot(x, t) = sum_lanes rho_lane(x, t)``.
+
+    Parameters
+    ----------
+    data : dict
+        Dictionary returned by ``load_pde_netcdf`` for a multilane PDE run. It
+        must contain ``"density_per_lane"``, ``"x"``, ``"time"``, ``"attrs"``
+        and ``"n_lanes"``.
+    ax : matplotlib.axes.Axes, optional
+        Existing axes on which to draw the plot. If ``None``, a new figure and
+        axes are created.
+    title : str, optional
+        Custom plot title. If ``None``, a title is generated from the number of
+        lanes.
+
+    Returns
+    -------
+    fig : matplotlib.figure.Figure
+        The figure object containing the plot.
+    ax : matplotlib.axes.Axes
+        The axes object on which the plot was drawn.
+    """
     from analysis import compute_total_density
-    rho_tot = compute_total_density(data)   # (time, x)
+    rho_tot = compute_total_density(data)   
     x       = data["x"]
     time    = data["time"]
     attrs   = data["attrs"]
@@ -244,14 +406,35 @@ def plot_space_time_total(data, ax=None, title=None):
 
 
 def plot_lane_densities(data, x_pos=0.5, ax=None, title=None):
-    """Per-lane density vs time at a fixed spatial position x_pos.
+    """Plot lane-resolved density against time at a fixed position.
+
+    The spatial cell closest to ``x_pos`` is selected, then the density in each
+    lane at that cell is plotted as a function of time.
 
     Parameters
     ----------
-    x_pos : float
-        Position along the road (in domain units). Nearest cell is used.
+    data : dict
+        Dictionary returned by ``load_pde_netcdf`` for a multilane PDE run. It
+        must contain ``"density_per_lane"``, ``"x"``, ``"time"`` and
+        ``"n_lanes"``.
+    x_pos : float, default=0.5
+        Physical position along the road at which to sample the density. The
+        nearest grid cell is used.
+    ax : matplotlib.axes.Axes, optional
+        Existing axes on which to draw the plot. If ``None``, a new figure and
+        axes are created.
+    title : str, optional
+        Custom plot title. If ``None``, a title is generated from the selected
+        cell position.
+
+    Returns
+    -------
+    fig : matplotlib.figure.Figure
+        The figure object containing the plot.
+    ax : matplotlib.axes.Axes
+        The axes object on which the plot was drawn.
     """
-    density_pl = data["density_per_lane"]   # (time, lane, x)
+    density_pl = data["density_per_lane"]   
     x          = data["x"]
     time       = data["time"]
     n_lanes    = data["n_lanes"]
@@ -277,11 +460,35 @@ def plot_lane_densities(data, x_pos=0.5, ax=None, title=None):
 
 
 def plot_total_mass(data, ax=None, title=None):
-    """Mass deviation Δmass(t) = mass(t) − mass(0) vs time.
+    """Plot the deviation of total mass from its initial value.
 
-    Plotting the deviation from initial mass rather than the absolute value
-    avoids matplotlib's offset notation and makes conservation quality
-    immediately readable: a perfect simulation gives a flat line at zero.
+    This is a conservation diagnostic for the multilane PDE solver. The plotted
+    quantity is
+
+    ``Delta mass(t) = mass(t) - mass(0)``.
+
+    Plotting the deviation rather than the absolute mass avoids Matplotlib's
+    offset notation and makes conservation errors easier to see.
+
+    Parameters
+    ----------
+    data : dict
+        Dictionary returned by ``load_pde_netcdf`` for a PDE run. It must contain
+        the data required by ``analysis.compute_total_mass`` and the key
+        ``"time"``.
+    ax : matplotlib.axes.Axes, optional
+        Existing axes on which to draw the plot. If ``None``, a new figure and
+        axes are created.
+    title : str, optional
+        Custom plot title. If ``None``, a default conservation-check title is
+        used.
+
+    Returns
+    -------
+    fig : matplotlib.figure.Figure
+        The figure object containing the plot.
+    ax : matplotlib.axes.Axes
+        The axes object on which the plot was drawn.
     """
     from analysis import compute_total_mass
     mass      = compute_total_mass(data)
