@@ -39,7 +39,7 @@ module lane_change_mod
 
     ! Backward look-ahead distance = V_MAX: a following car at maximum
     ! velocity needs at least L_BACK+1 clear cells to avoid a collision.
-    integer, parameter :: L_BACK = 5
+    integer, parameter :: L_BACK = 5        ! This needs to be the same as V_MAX
 
     public :: apply_lane_changes
 
@@ -94,8 +94,8 @@ contains
                 if (k > 1 .and. same_dir(road, k, k-1)) then
                     go_fwd  = other_fwd_gap(road%lane(k-1)%old, i, L)
                     go_back = other_back_gap(road%lane(k-1)%old, i)
-                    t2r = (go_fwd  > v + 1)
-                    t3r = (go_back > L_BACK)
+                    t2r = (go_fwd  > v + 1)                                 ! T2 - Is this vehicle going fast enough to cover the gap infront in the next step?
+                    t3r = (go_back > L_BACK)                                ! T3 - Is the vehicle behind in the target lane going slow enough to allow a merge?
                     want_right = t2r .and. t3r
                 end if
 

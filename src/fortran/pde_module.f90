@@ -380,7 +380,7 @@ contains
     integer :: time_varid                    ! NetCDF variable identifier for time coordinate.
     integer :: lane_varid                    ! NetCDF variable identifier for lane coordinate.
     integer :: i                             ! Loop index.
-    integer :: n_time                        ! Number of time steps in the history arrays.
+    integer :: n_times                        ! Number of time steps in the history arrays.
     integer :: M                             ! Number of physical spatial cells.
     integer :: n_lanes_out                   ! Number of lanes written to file.
     real, allocatable :: x_coord(:)          ! cell centre x coordinates, shape (M)
