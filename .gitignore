@@ -12,10 +12,13 @@ build/
 *.exe
 
 # Simulation output
-data/output/*.nc
-data/output/*.txt
+data/output/**/*.nc
+data/output/**/*.txt
+data/output/**/*.json
 data/output/gui/
 data/output/gui_smoke/
+data/output/gui_pde/
+data/output/heatmap_smoke/
 
 # Generated plots
 plots/
