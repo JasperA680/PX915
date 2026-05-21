@@ -80,8 +80,8 @@ def main():
 
     # Tabs exist in the expected order.
     assert win.tabs.count() == 2, f"expected 2 tabs, got {win.tabs.count()}"
-    assert win.tabs.tabText(0) == "CA"
-    assert win.tabs.tabText(1) == "PDE"
+    assert win.tabs.tabText(0) == "Cellular Automaton (CA)"
+    assert win.tabs.tabText(1) == "PDE Continuum Model"
 
     # PDE tab is wired up: form, plot panel, and Run button present.
     win.tabs.setCurrentIndex(1)
@@ -91,10 +91,10 @@ def main():
         "PDE tab missing PDEPlotPanel"
     assert win.pde_tab.run_button.text() == "Run", \
         "PDE tab missing Run button"
-    assert win.pde_tab.plot_panel.count() == 6, \
-        f"PDE plot panel should have 6 tabs, got {win.pde_tab.plot_panel.count()}"
-    # Multi-lane-only tabs (3, 4, 5) start disabled.
-    for i in (3, 4, 5):
+    assert win.pde_tab.plot_panel.count() == 5, \
+        f"PDE plot panel should have 5 tabs, got {win.pde_tab.plot_panel.count()}"
+    # Multi-lane-only tabs (3, 4) start disabled.
+    for i in (3, 4):
         assert not win.pde_tab.plot_panel.isTabEnabled(i), \
             f"PDE plot tab {i} should be disabled before a run"
     print("--- PDE tab: PASS ---")

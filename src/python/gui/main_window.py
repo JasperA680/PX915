@@ -24,6 +24,7 @@ from python.gui.plot_panel import PlotPanel
 from python.gui.pde_param_form import PDEParamForm, PRESETS_ORDER, CUSTOM_LABEL
 from python.gui.pde_runner_thread import PDERunnerThread
 from python.gui.pde_plot_panel import PDEPlotPanel
+from python.gui.road_edit_dialog import RoadEditDialog
 
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -51,6 +52,9 @@ class CATab(QWidget):
         self._runner: Optional[RunnerThread] = None
         self._current_spec: Optional[NetworkSpec] = None
         self._current_layout: Optional[LayoutSpec] = None
+        # Per-road parameter overrides set via the click-to-edit dialog.
+        # Keyed by road_id; reset when the preset combo changes.
+        self._road_overrides: dict = {}
 
         # --- Toolbar row: preset + model + run ---
         toolbar = QWidget()
@@ -108,12 +112,18 @@ class CATab(QWidget):
         outer.addWidget(body, stretch=1)
 
         # --- Signals ---
-        self.preset_combo.currentTextChanged.connect(self._rebuild_spec)
+        self.preset_combo.currentTextChanged.connect(self._on_preset_changed_ca)
         self.model_combo.currentTextChanged.connect(lambda _m: None)  # no rebuild needed
         self.param_form.params_changed.connect(self._rebuild_spec)
         self.run_button.clicked.connect(self._on_run)
+        self.network_widget.road_clicked.connect(self._on_road_clicked)
 
         # Bootstrap with the first preset.
+        self._rebuild_spec()
+
+    def _on_preset_changed_ca(self, name: str):
+        """Reset per-road overrides whenever the preset changes, then rebuild."""
+        self._road_overrides = {}
         self._rebuild_spec()
 
     def _rebuild_spec(self, *_args):
@@ -126,12 +136,49 @@ class CATab(QWidget):
         except TypeError as exc:
             self.log.emit(f"preset error: {exc}")
             return
+        # Apply any per-road overrides set via the click-to-edit dialog.
+        for rid, ov in self._road_overrides.items():
+            road = next((r for r in spec.roads if r.id == rid), None)
+            if road is None:
+                continue
+            for ln in road.lanes:
+                if ov.get("alpha") is not None and getattr(ln, "open_in", False):
+                    ln.alpha = ov["alpha"]
+                if ov.get("beta") is not None and getattr(ln, "open_out", False):
+                    ln.beta = ov["beta"]
+            if ov.get("length") is not None:
+                road.length = ov["length"]
         self._current_spec = spec
         self._current_layout = layout
         self.network_widget.set_network(spec, layout)
         self.status.emit(
             f"preset {name}: {len(spec.roads)} roads, {len(spec.junctions)} junctions"
         )
+
+    def _on_road_clicked(self, road_id: int):
+        """Open the per-road editor dialog and apply any changes."""
+        if self._current_spec is None:
+            return
+        road = next((r for r in self._current_spec.roads if r.id == road_id), None)
+        if road is None:
+            return
+
+        # Read current α/β from the road's lanes.
+        alpha = next((ln.alpha for ln in road.lanes if getattr(ln, "open_in", False)), 0.5)
+        beta  = next((ln.beta  for ln in road.lanes if getattr(ln, "open_out", False)), 0.5)
+        has_alpha = any(getattr(ln, "open_in",  False) for ln in road.lanes)
+        has_beta  = any(getattr(ln, "open_out", False) for ln in road.lanes)
+        length = getattr(road, "length", 20)
+
+        dlg = RoadEditDialog(road_id, alpha, beta, length,
+                             has_alpha, has_beta, parent=self)
+        if dlg.exec_() == RoadEditDialog.Accepted:
+            vals = dlg.values()
+            self._road_overrides[road_id] = vals
+            self._rebuild_spec()
+            self.log.emit(
+                f"R{road_id} overridden: α={vals['alpha']}  β={vals['beta']}  L={vals['length']}"
+            )
 
     def _on_run(self):
         if self._current_spec is None or self._current_layout is None:
@@ -343,10 +390,19 @@ class MainWindow(QMainWindow):
 
         # --- Top tabs: CA / PDE ---
         self.tabs = QTabWidget()
+        self.tabs.setStyleSheet("""
+            QTabBar::tab {
+                min-width: 220px; min-height: 38px;
+                font-size: 13px; font-weight: bold;
+                padding: 4px 16px;
+            }
+            QTabBar::tab:selected { background: #cce4ff; }
+            QTabBar::tab:!selected { background: #e8e8e8; }
+        """)
         self.ca_tab = CATab(Path(binary), Path(output_dir))
         self.pde_tab = PDETab(Path(pde_binary), Path(pde_output_dir))
-        self.tabs.addTab(self.ca_tab, "CA")
-        self.tabs.addTab(self.pde_tab, "PDE")
+        self.tabs.addTab(self.ca_tab, "Cellular Automaton (CA)")
+        self.tabs.addTab(self.pde_tab, "PDE Continuum Model")
         self.setCentralWidget(self.tabs)
 
         # --- Status bar (shared across tabs) ---

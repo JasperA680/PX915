@@ -324,50 +324,76 @@ def plot_network_spec(spec, layout, ax=None, alpha_beta_labels: bool = False,
     )
 
 
-def plot_network_density(result, ax=None, title=None):
-    """Per-road density vs time.  One line per road."""
+def plot_network_density(result, ax=None, title=None, road_ids=None):
+    """Per-road density vs time.  One line per road.
+
+    Parameters
+    ----------
+    road_ids : list[int] | None
+        0-based road indices to plot.  ``None`` plots all roads.
+    """
     if ax is None:
         fig, ax = plt.subplots(figsize=(9, 4))
     else:
         fig = ax.figure
     n_steps, n_roads = result.road_density.shape
     t = np.arange(1, n_steps + 1)
-    for r in range(n_roads):
+    indices = road_ids if road_ids is not None else list(range(n_roads))
+    for r in indices:
         ax.plot(t, result.road_density[:, r], label=f'R{r + 1}', linewidth=1.0)
     ax.set_xlabel('Time step')
     ax.set_ylabel('Density ρ')
     ax.set_ylim(0, 1)
     ax.set_title(title or 'Per-road density vs time')
-    if n_roads <= 12:
-        ax.legend(fontsize=8, ncol=min(4, n_roads), loc='upper right')
+    n_shown = len(indices)
+    if n_shown <= 12:
+        ax.legend(fontsize=8, ncol=min(4, n_shown), loc='upper right')
     return fig, ax
 
 
-def plot_network_currents(result, ax=None, title=None):
-    """Per-road cumulative entries and exits."""
+def plot_network_currents(result, ax=None, title=None, road_ids=None):
+    """Per-road instantaneous exit flow (exits per timestep) with time-mean lines.
+
+    Parameters
+    ----------
+    road_ids : list[int] | None
+        0-based road indices to plot.  ``None`` plots all roads.
+    """
     if ax is None:
         fig, ax = plt.subplots(figsize=(9, 4))
     else:
         fig = ax.figure
-    n_steps, n_roads = result.road_entries.shape
-    cum_in  = np.cumsum(result.road_entries, axis=0)
-    cum_out = np.cumsum(result.road_exits,   axis=0)
+    n_steps, n_roads = result.road_exits.shape
     t = np.arange(1, n_steps + 1)
-    for r in range(n_roads):
-        if cum_in[-1, r] == 0 and cum_out[-1, r] == 0:
+    indices = road_ids if road_ids is not None else list(range(n_roads))
+    plotted = 0
+    for r in indices:
+        exits = result.road_exits[:, r].astype(float)
+        if exits.sum() == 0:
             continue
-        ax.plot(t, cum_in[:, r],  linestyle='-',  linewidth=1.0, label=f'R{r + 1} in')
-        ax.plot(t, cum_out[:, r], linestyle='--', linewidth=1.0, label=f'R{r + 1} out')
+        mean_j = float(exits.mean())
+        color = f'C{plotted % 10}'
+        ax.plot(t, exits, linewidth=0.9, color=color, alpha=0.85, label=f'R{r + 1}')
+        ax.axhline(mean_j, color=color, linestyle='--', linewidth=1.0, alpha=0.7)
+        plotted += 1
     ax.set_xlabel('Time step')
-    ax.set_ylabel('Cumulative count')
-    ax.set_title(title or 'Per-road cumulative entries (—) and exits (--)')
-    if n_roads <= 8:
-        ax.legend(fontsize=7, ncol=2, loc='upper left')
+    ax.set_ylabel('Exits per step')
+    ax.set_title(title or 'Per-road flow (exits/step)  — dashed = time mean')
+    if plotted and plotted <= 8:
+        ax.legend(fontsize=7, ncol=min(2, plotted), loc='upper right')
     return fig, ax
 
 
-def plot_network_spacetime(result, road_id: int, ax=None, title=None):
-    """Concatenate all lanes of a single road as a space-time diagram."""
+def plot_network_spacetime(result, road_id: int, ax=None, title=None,
+                           lane_index: int = 0):
+    """Space-time diagram for a single lane of a single road.
+
+    Parameters
+    ----------
+    lane_index : int
+        Which lane of the road to display (0-based index into the lanes
+        belonging to this road).  Ignored when the road has only one lane.
+    """
     if ax is None:
         fig, ax = plt.subplots(figsize=(10, 4))
     else:
@@ -378,22 +404,20 @@ def plot_network_spacetime(result, road_id: int, ax=None, title=None):
         ax.set_title(f'road {road_id}: not found')
         return fig, ax
 
-    lane_lens = result.lane_length[lane_idxs]
-    n_steps   = result.occupancy.shape[0]
-    rows = []
-    for li, Lk in zip(lane_idxs, lane_lens):
-        rows.append(result.occupancy[:, li, :Lk])
-        rows.append(np.full((n_steps, 1), 0.5))   # separator stripe
-    if rows:
-        rows = rows[:-1]
-    stacked = np.concatenate(rows, axis=1).T   # (cell-across-lanes, time)
+    lane_index = max(0, min(int(lane_index), len(lane_idxs) - 1))
+    li  = lane_idxs[lane_index]
+    Lk  = int(result.lane_length[li])
+    n_steps = result.occupancy.shape[0]
 
-    ax.imshow(stacked, aspect='auto', origin='lower', cmap='binary',
+    occ = result.occupancy[:, li, :Lk].T   # (cells, time)
+
+    ax.imshow(occ, aspect='auto', origin='lower', cmap='binary',
               interpolation='nearest', vmin=0, vmax=1,
-              extent=[1, n_steps, 0, stacked.shape[0]])
+              extent=[1, n_steps, 0, Lk])
     ax.set_xlabel('Time step')
-    ax.set_ylabel('Cell (lanes stacked)')
-    ax.set_title(title or f'Road {road_id} space-time')
+    ax.set_ylabel('Cell')
+    lane_label = f' — Lane {lane_index + 1}' if len(lane_idxs) > 1 else ''
+    ax.set_title(title or f'Road {road_id}{lane_label} space-time')
     return fig, ax
 
 

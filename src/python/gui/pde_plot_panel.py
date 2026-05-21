@@ -1,9 +1,11 @@
 """Tabbed panel for LWR PDE plots.
 
-Six tabs:
+Five tabs:
   Space-time, Snapshots, Boundary flow — populated for any result.
-  Per-lane space-time, Lane densities, Mass conservation — enabled only
-  when n_lanes > 1.
+  Lane densities, Mass conservation — enabled only when n_lanes > 1.
+
+On multilane results the Space-time and Snapshots tabs each show a lane
+selector so individual lane density fields can be explored.
 
 Each tab clears the whole Figure before re-plotting so colorbars and
 legends don't pile up across runs.
@@ -32,14 +34,79 @@ def _reset_axes(tab: _CanvasTab):
 
 
 class _SpacetimeTab(_CanvasTab):
+    """Space-time heatmap.
+
+    Single-lane: shows the overall density field.
+    Multi-lane:  shows a per-lane selector so each lane's density can be
+                 inspected individually (matches what the old _PerLaneTab did).
+    """
+
     def __init__(self, parent=None):
         super().__init__(parent)
+        row = QHBoxLayout()
+        row.addWidget(QLabel("Lane:"))
+        self.lane_combo = QComboBox()
+        row.addWidget(self.lane_combo)
+        row.addStretch(1)
+        self._lane_row_widget = row   # kept so we can show/hide it
+        self._layout.insertLayout(0, row)
         self._data: Optional[dict] = None
+        self.lane_combo.currentIndexChanged.connect(self._refresh)
+        # Hide lane selector until multilane data arrives
+        self._set_lane_row_visible(False)
+
+    def _set_lane_row_visible(self, visible: bool):
+        for i in range(self._lane_row_widget.count()):
+            item = self._lane_row_widget.itemAt(i)
+            if item and item.widget():
+                item.widget().setVisible(visible)
 
     def set_data(self, data: dict):
         self._data = data
+        n_lanes = int(data.get("n_lanes", 1))
+        if n_lanes > 1:
+            self.lane_combo.blockSignals(True)
+            self.lane_combo.clear()
+            for i in range(n_lanes):
+                self.lane_combo.addItem(f"Lane {i + 1}", i)
+            self.lane_combo.blockSignals(False)
+            self._set_lane_row_visible(True)
+        else:
+            self._set_lane_row_visible(False)
+        self._refresh()
+
+    def _refresh(self):
+        if self._data is None:
+            return
         _reset_axes(self)
-        plot_pde_spacetime(data, ax=self.ax)
+        n_lanes = int(self._data.get("n_lanes", 1))
+        if n_lanes > 1:
+            lane_idx = self.lane_combo.currentData()
+            if lane_idx is None:
+                lane_idx = 0
+            lane_idx = int(lane_idx)
+            density = self._data["density_per_lane"][:, lane_idx, :]
+            x = self._data["x"]
+            time = self._data["time"]
+            rho_max = float(self._data["attrs"].get("rho_max", 1.0))
+            im = self.ax.imshow(
+                density,
+                aspect="auto",
+                origin="lower",
+                cmap="viridis",
+                vmin=0,
+                vmax=rho_max,
+                extent=[float(x[0]), float(x[-1]), float(time[0]), float(time[-1])],
+            )
+            self.figure.colorbar(im, ax=self.ax, label="ρ")
+            self.ax.set_xlabel("Position x")
+            self.ax.set_ylabel("Time t")
+            attrs = self._data["attrs"]
+            ic = attrs.get("ic_type", "")
+            flux = attrs.get("flux_type", "")
+            self.ax.set_title(f"Space-time density — Lane {lane_idx + 1}  (IC: {ic},  flux: {flux})")
+        else:
+            plot_pde_spacetime(self._data, ax=self.ax)
         self.canvas.draw_idle()
 
 
@@ -56,23 +123,58 @@ class _FlowTab(_CanvasTab):
 
 
 class _SnapshotsTab(_CanvasTab):
+    """Density snapshots at evenly-spaced times.
+
+    On multilane results a lane selector appears so each lane can be explored.
+    """
+
     def __init__(self, parent=None):
         super().__init__(parent)
-        row = QHBoxLayout()
-        row.addWidget(QLabel("Snapshots:"))
+
+        # Lane selector row (shown only for multilane)
+        lane_row = QHBoxLayout()
+        lane_row.addWidget(QLabel("Lane:"))
+        self.lane_combo = QComboBox()
+        lane_row.addWidget(self.lane_combo)
+        lane_row.addStretch(1)
+        self._lane_row = lane_row
+        self._layout.insertLayout(0, lane_row)
+        self._set_lane_row_visible(False)
+
+        # Snapshot count slider
+        snap_row = QHBoxLayout()
+        snap_row.addWidget(QLabel("Snapshots:"))
         self.slider = QSlider(Qt.Horizontal)
         self.slider.setRange(2, 12)
         self.slider.setValue(6)
         self.label = QLabel("6")
         self.slider.valueChanged.connect(self._on_slide)
-        row.addWidget(self.slider)
-        row.addWidget(self.label)
-        row.addStretch(1)
-        self._layout.insertLayout(0, row)
+        snap_row.addWidget(self.slider)
+        snap_row.addWidget(self.label)
+        snap_row.addStretch(1)
+        self._layout.insertLayout(1, snap_row)
+
         self._data: Optional[dict] = None
+        self.lane_combo.currentIndexChanged.connect(self._refresh)
+
+    def _set_lane_row_visible(self, visible: bool):
+        for i in range(self._lane_row.count()):
+            item = self._lane_row.itemAt(i)
+            if item and item.widget():
+                item.widget().setVisible(visible)
 
     def set_data(self, data: dict):
         self._data = data
+        n_lanes = int(data.get("n_lanes", 1))
+        if n_lanes > 1:
+            self.lane_combo.blockSignals(True)
+            self.lane_combo.clear()
+            for i in range(n_lanes):
+                self.lane_combo.addItem(f"Lane {i + 1}", i)
+            self.lane_combo.blockSignals(False)
+            self._set_lane_row_visible(True)
+        else:
+            self._set_lane_row_visible(False)
         self._refresh()
 
     def _on_slide(self, value: int):
@@ -83,57 +185,21 @@ class _SnapshotsTab(_CanvasTab):
         if self._data is None:
             return
         _reset_axes(self)
-        plot_pde_snapshots(self._data, n_snapshots=self.slider.value(), ax=self.ax)
-        self.canvas.draw_idle()
-
-
-class _PerLaneTab(_CanvasTab):
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        row = QHBoxLayout()
-        row.addWidget(QLabel("Lane:"))
-        self.lane_combo = QComboBox()
-        row.addWidget(self.lane_combo)
-        row.addStretch(1)
-        self._layout.insertLayout(0, row)
-        self._data: Optional[dict] = None
-        self.lane_combo.currentIndexChanged.connect(self._refresh)
-
-    def set_data(self, data: dict):
-        self._data = data
-        self.lane_combo.blockSignals(True)
-        self.lane_combo.clear()
-        for i in range(int(data["n_lanes"])):
-            self.lane_combo.addItem(f"Lane {i + 1}", i)
-        self.lane_combo.blockSignals(False)
-        self._refresh()
-
-    def _refresh(self):
-        if self._data is None:
-            return
-        lane_idx = self.lane_combo.currentData()
-        if lane_idx is None:
-            lane_idx = 0
-        lane_idx = int(lane_idx)
-        density = self._data["density_per_lane"][:, lane_idx, :]
-        x = self._data["x"]
-        time = self._data["time"]
-        rho_max = float(self._data["attrs"].get("rho_max", 1.0))
-
-        _reset_axes(self)
-        im = self.ax.imshow(
-            density,
-            aspect="auto",
-            origin="lower",
-            cmap="viridis",
-            vmin=0,
-            vmax=rho_max,
-            extent=[float(x[0]), float(x[-1]), float(time[0]), float(time[-1])],
-        )
-        self.figure.colorbar(im, ax=self.ax, label="ρ")
-        self.ax.set_xlabel("Position x")
-        self.ax.set_ylabel("Time t")
-        self.ax.set_title(f"Per-lane density — Lane {lane_idx + 1}")
+        n_lanes = int(self._data.get("n_lanes", 1))
+        if n_lanes > 1:
+            lane_idx = self.lane_combo.currentData()
+            if lane_idx is None:
+                lane_idx = 0
+            lane_idx = int(lane_idx)
+            # Build a temporary single-lane data view for the selected lane
+            lane_data = dict(self._data)
+            lane_data["density"] = self._data["density_per_lane"][:, lane_idx, :]
+            attrs = dict(self._data["attrs"])
+            attrs["ic_type"] = f'{attrs.get("ic_type", "")} (Lane {lane_idx + 1})'
+            lane_data["attrs"] = attrs
+            plot_pde_snapshots(lane_data, n_snapshots=self.slider.value(), ax=self.ax)
+        else:
+            plot_pde_snapshots(self._data, n_snapshots=self.slider.value(), ax=self.ax)
         self.canvas.draw_idle()
 
 
@@ -208,11 +274,14 @@ class _MassTab(_CanvasTab):
 
 
 # Indices for multi-lane-only tabs (set in addTab order below).
-_MULTILANE_TAB_INDICES = (3, 4, 5)
+_MULTILANE_TAB_INDICES = (3, 4)
 
 
 class PDEPlotPanel(QTabWidget):
-    """Six-tab plot panel for PDE simulation results.
+    """Five-tab plot panel for PDE simulation results.
+
+    Tab order: Space-time (0), Snapshots (1), Boundary flow (2),
+               Lane densities (3, multilane only), Mass conservation (4, multilane only).
 
     Call ``show_result(data)`` with the dict returned by ``load_pde_netcdf``.
     """
@@ -222,20 +291,18 @@ class PDEPlotPanel(QTabWidget):
         self.tab_spacetime = _SpacetimeTab()
         self.tab_snapshots = _SnapshotsTab()
         self.tab_flow = _FlowTab()
-        self.tab_per_lane = _PerLaneTab()
         self.tab_lane_dens = _LaneDensitiesTab()
         self.tab_mass = _MassTab()
         self.addTab(self.tab_spacetime, "Space-time")
         self.addTab(self.tab_snapshots, "Snapshots")
         self.addTab(self.tab_flow, "Boundary flow")
-        self.addTab(self.tab_per_lane, "Per-lane space-time")
         self.addTab(self.tab_lane_dens, "Lane densities")
         self.addTab(self.tab_mass, "Mass conservation")
         for i in _MULTILANE_TAB_INDICES:
             self.setTabEnabled(i, False)
 
     def set_multilane_enabled(self, enabled: bool):
-        """Enable/disable the three multi-lane tabs without touching plot data."""
+        """Enable/disable the two multi-lane tabs without touching plot data."""
         for i in _MULTILANE_TAB_INDICES:
             self.setTabEnabled(i, enabled)
 
@@ -247,6 +314,5 @@ class PDEPlotPanel(QTabWidget):
         multi = int(data.get("n_lanes", 1)) > 1
         self.set_multilane_enabled(multi)
         if multi:
-            self.tab_per_lane.set_data(data)
             self.tab_lane_dens.set_data(data)
             self.tab_mass.set_data(data)
