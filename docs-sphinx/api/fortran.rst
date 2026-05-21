@@ -24,6 +24,17 @@ boundary entrance and exit rules, and routines for measuring density.
 .. f:autosrcfile:: tasep.f90
 
 
+Nagel-Schreckenberg Model
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The ``ns_model`` module contains the update logic for the implementation of
+a Nagel-Schreckenberg type cellular automaton model, introducing variable
+speeds and more realistic driver behaviour. It defines the update logic, 
+as well a universal speed limit for all cars.
+
+.. f:autosrcfile:: ns_model.f90
+
+
 Cellular automata simulation module
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

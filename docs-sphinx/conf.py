@@ -31,6 +31,7 @@ fortran_src = [
     "../src/fortran/tasep.f90",
     "../src/fortran/simulation.f90",
     "../src/fortran/fundamental_diagram.f90",
+    "../src/fortran/ns_model.f90",
 ]
 
 # Use NumPy-style Python docstrings

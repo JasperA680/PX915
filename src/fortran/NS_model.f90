@@ -1,4 +1,13 @@
 module NS_model
+    ! Update logic for one step in a Nagel-Schreckenberg type traffic model.
+    !
+    ! This module takes a road network and progresses all vehicles within it
+    ! by one step under the rules of a Nagel-Schreckenberg model.
+    !
+    ! These rules are applied sequentially as follows:
+    ! # Acceleration: The cars increase their velocity as :math:`v_i^{t+1/3}`
+
+
     use vehicle_mod
     use road_network_mod
 
@@ -11,21 +20,20 @@ module NS_model
     real,    parameter :: P_SLOW = 0.2   ! random deceleration probability
 
 contains
-    !-----------------------------------------------------------------
-    ! Per-lane Nagel-Schreckenberg step for the networked model.
-    !
-    ! Inbound lane (junction at site L, open at site 1):
-    !   * Bulk hops use old state; site L is NOT explicitly exited here
-    !     (the junction step handles that).
-    !   * Open inflow at site 1 with alpha and stochastic indicator.
-    !
-    ! Outbound lane (junction at site 1, open at site L):
-    !   * Bulk hops use old state.
-    !   * Open outflow at site L with beta.
-    !   * Site 1 is NOT entered here (junction step places vehicles there).
-    !-----------------------------------------------------------------
     
     subroutine NS_model_step(net)
+        ! Per-lane Nagel-Schreckenberg step for the networked model.
+        !
+        ! Inbound lane (junction at site L, open at site 1):
+        !   * Bulk hops use old state; site L is NOT explicitly exited here
+        !     (the junction step handles that).
+        !   * Open inflow at site 1 with alpha and stochastic indicator.
+        !
+        ! Outbound lane (junction at site 1, open at site L):
+        !   * Bulk hops use old state.
+        !   * Open outflow at site L with beta.
+        !   * Site 1 is NOT entered here (junction step places vehicles there).
+        
         type(road_network_t), intent(inout) :: net
         integer :: r, k, L, i_site, j, gap, v, new_pos
         real    :: rnd
