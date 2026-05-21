@@ -81,6 +81,12 @@ class SimParams:
     rng_seed: int = 42
     max_lane_length: int = 0        # 0 -> auto from lanes
     model: str = "NS"               # "NS" (Nagel-Schreckenberg) or "TASEP" (skeleton; not yet implemented)
+    # Lane-change behaviour (only meaningful when a road has >1 same-direction lane):
+    #   -1 = LC_DISABLED   (no lane changes — default)
+    #    0 = LC_SYMMETRIC  (change when blocked, either side)
+    #    1 = LC_ASYMMETRIC (prefer rightmost lane)
+    lc_model: int = -1
+    lc_p_change: float = 1.0
 
 
 # ---------------------------------------------------------------------------

@@ -111,9 +111,13 @@ program run_network
 
     log_every = max(1, n_steps / 100)
 
+    ! Log the lane-change configuration so the GUI run log shows what's active.
+    write(*,'(a,i0,a,f6.3)') &
+        "lane change: model=", params%lc_model, " p_change=", params%lc_p_change
+
     ! ----- Simulation loop -----
     do step = 1, n_steps
-        call network_step(net)
+        call network_step(net, params%lc_model, params%lc_p_change)
 
         ! Record state and per-road counters.
         do r = 1, n_roads

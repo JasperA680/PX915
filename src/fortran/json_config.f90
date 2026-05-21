@@ -25,6 +25,12 @@ module json_config_mod
         integer :: rng_seed        = 42
         integer :: max_lane_length = 0      ! 0 => compute from lanes
         character(len=16) :: model = "NS"   ! "NS" (Nagel-Schreckenberg) or "TASEP" (skeleton)
+        ! Lane-change behaviour (only meaningful when a road has >1 same-direction lane):
+        !   -1 = LC_DISABLED   (no lane changes)
+        !    0 = LC_SYMMETRIC  (change when blocked, either side)
+        !    1 = LC_ASYMMETRIC (prefer rightmost lane)
+        integer :: lc_model    = -1
+        real    :: lc_p_change = 1.0
     end type sim_params_t
 
     public :: read_config, load_text_file
@@ -153,6 +159,8 @@ contains
             case ("p_slow");          params%p_slow          = parse_real(buf, pos)
             case ("rng_seed");        params%rng_seed        = parse_int(buf, pos)
             case ("max_lane_length"); params%max_lane_length = parse_int(buf, pos)
+            case ("lc_model");        params%lc_model        = parse_int(buf, pos)
+            case ("lc_p_change");     params%lc_p_change     = parse_real(buf, pos)
             case ("model")
                 call parse_string(buf, pos, sval)
                 params%model = sval

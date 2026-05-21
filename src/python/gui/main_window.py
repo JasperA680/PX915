@@ -222,6 +222,14 @@ class CATab(QWidget):
         self._current_spec = spec
         self._current_layout = layout
         self.network_widget.set_network(spec, layout)
+        # Enable lane-change UI only when the spec has at least one road with
+        # multiple same-direction lanes (otherwise the parameters do nothing).
+        has_parallel = any(
+            len(r.lanes) >= 2
+            and len({ln.flow_direction for ln in r.lanes}) == 1
+            for r in spec.roads
+        )
+        self.param_form.set_lane_change_enabled(has_parallel)
         self.status.emit(
             f"preset {name}: {len(spec.roads)} roads, {len(spec.junctions)} junctions"
         )

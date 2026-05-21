@@ -3,9 +3,10 @@
 Pure delegation to visualisation.plot_network_spec — the spec preview shares
 its geometry-drawing code with the post-run heatmap (plot_network_layout).
 
-The widget wraps both a NavigationToolbar (zoom/pan) and the canvas in a
-QWidget so callers can embed it like any other widget.  Clicking near a road
-emits ``road_clicked(road_id: int)`` so CATab can open an editor dialog.
+The widget wraps a NavigationToolbar (zoom/pan + Home), a "Focus on" combo
+for jumping between road-level views, and the canvas in a QWidget.  Clicking
+near a road or junction emits ``road_clicked`` / ``junction_clicked`` so
+CATab can open an editor dialog.
 """
 
 from __future__ import annotations
@@ -14,7 +15,7 @@ import math
 from typing import Optional
 
 from PyQt5.QtCore import pyqtSignal
-from PyQt5.QtWidgets import QVBoxLayout, QWidget
+from PyQt5.QtWidgets import QVBoxLayout, QHBoxLayout, QWidget, QComboBox, QLabel
 from matplotlib.backends.backend_qt5agg import (
     FigureCanvasQTAgg,
     NavigationToolbar2QT,
@@ -36,7 +37,7 @@ def _point_to_segment_dist(px, py, x1, y1, x2, y2) -> float:
 
 
 class NetworkWidget(QWidget):
-    """Network preview canvas with zoom/pan toolbar, road/junction click support."""
+    """Network preview canvas with toolbar, focus combo, road/junction clicks."""
 
     road_clicked     = pyqtSignal(int)   # road_id when user clicks near a road
     junction_clicked = pyqtSignal(int)   # junction_id when user clicks near a junction
@@ -47,25 +48,101 @@ class NetworkWidget(QWidget):
         self.canvas = FigureCanvasQTAgg(fig)
         self._ax = fig.add_subplot(111)
         self._toolbar = NavigationToolbar2QT(self.canvas, self)
+
+        # "Focus on" combo lets the user jump between road-level zooms.
+        self._focus_row = QHBoxLayout()
+        self._focus_row.setContentsMargins(4, 0, 4, 0)
+        self._focus_row.addWidget(QLabel("Focus on:"))
+        self.focus_combo = QComboBox()
+        self.focus_combo.setToolTip(
+            "Jump-zoom: 'All' shows the whole network, or pick a road to zoom in."
+        )
+        self._focus_row.addWidget(self.focus_combo, stretch=1)
+        focus_holder = QWidget()
+        focus_holder.setLayout(self._focus_row)
+
         self._spec: Optional[NetworkSpec] = None
         self._layout_spec: Optional[LayoutSpec] = None
         self._road_endpoints: dict = {}   # rid -> ((x1,y1), (x2,y2))
         self._junction_xy: dict = {}      # jid -> (x, y)
+        # Default view (full network); used by the Home button and the "All" focus option.
+        self._home_xlim: Optional[tuple] = None
+        self._home_ylim: Optional[tuple] = None
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.addWidget(self._toolbar)
+        layout.addWidget(focus_holder)
         layout.addWidget(self.canvas, stretch=1)
 
         self.canvas.mpl_connect("button_press_event", self._on_canvas_click)
+        self.focus_combo.currentIndexChanged.connect(self._on_focus_changed)
 
     def set_network(self, spec: NetworkSpec, layout: LayoutSpec):
         self._spec = spec
         self._layout_spec = layout
         self._road_endpoints = dict(layout.road_endpoints)
         self._junction_xy = dict(layout.junctions)
+
         self._ax.clear()
         plot_network_spec(spec, layout, ax=self._ax, alpha_beta_labels=True)
+
+        # Record the full-network view as "home" and reset the toolbar's view
+        # stack so the Home button (and any subsequent zoom-out) restores this
+        # view rather than whatever matplotlib autoscaled to before the redraw.
+        self._home_xlim = self._ax.get_xlim()
+        self._home_ylim = self._ax.get_ylim()
+        try:
+            self._toolbar.update()   # clears nav history
+            self._toolbar.push_current()
+        except Exception:
+            pass
+
+        # Repopulate the focus combo: 'All' + one entry per road.
+        self.focus_combo.blockSignals(True)
+        self.focus_combo.clear()
+        self.focus_combo.addItem("All", None)
+        for rid in sorted(self._road_endpoints):
+            self.focus_combo.addItem(f"R{rid}", int(rid))
+        self.focus_combo.blockSignals(False)
+
+        self.canvas.draw_idle()
+
+    def _on_focus_changed(self, _idx: int):
+        """Zoom to the selected road, or restore the home view for 'All'."""
+        target = self.focus_combo.currentData()
+        if target is None:
+            self._restore_home()
+            return
+        ep = self._road_endpoints.get(int(target))
+        if ep is None:
+            return
+        (x1, y1), (x2, y2) = ep
+        # Pad bounding box by 40 % of its diagonal so the road isn't tight to
+        # the edge and any nearby junctions remain visible.
+        xmin, xmax = min(x1, x2), max(x1, x2)
+        ymin, ymax = min(y1, y2), max(y1, y2)
+        w = max(xmax - xmin, 1e-3)
+        h = max(ymax - ymin, 1e-3)
+        diag = math.hypot(w, h)
+        pad = 0.4 * diag
+        self._ax.set_xlim(xmin - pad, xmax + pad)
+        self._ax.set_ylim(ymin - pad, ymax + pad)
+        try:
+            self._toolbar.push_current()
+        except Exception:
+            pass
+        self.canvas.draw_idle()
+
+    def _restore_home(self):
+        if self._home_xlim is None or self._home_ylim is None:
+            return
+        self._ax.set_xlim(*self._home_xlim)
+        self._ax.set_ylim(*self._home_ylim)
+        try:
+            self._toolbar.push_current()
+        except Exception:
+            pass
         self.canvas.draw_idle()
 
     def _on_canvas_click(self, event):

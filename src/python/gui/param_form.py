@@ -12,6 +12,7 @@ from typing import Dict
 from PyQt5.QtCore import pyqtSignal
 from PyQt5.QtWidgets import (
     QWidget, QFormLayout, QSpinBox, QDoubleSpinBox, QGroupBox, QVBoxLayout,
+    QComboBox,
 )
 
 from python.road_network import SimParams
@@ -84,17 +85,69 @@ class ParamForm(QWidget):
         form.addRow("Dawdle probability", self.p_slow)
         outer.addWidget(sim_group)
 
+        # Lane-change controls.  Disabled when the current spec has no
+        # parallel same-direction lanes (set_lane_change_enabled toggles them).
+        self.lc_group = QGroupBox("Lane changing")
+        lc_form = QFormLayout(self.lc_group)
+        self.lc_model = QComboBox()
+        # userData = Fortran LC_* int code
+        self.lc_model.addItem("Disabled",   -1)
+        self.lc_model.addItem("Symmetric",   0)
+        self.lc_model.addItem("Asymmetric (prefer right)", 1)
+        self.lc_model.setCurrentIndex(0)
+        self.lc_model.setToolTip(
+            "lc_model: Lane-change behaviour applied at every step.\n"
+            "  Disabled   — no lateral exchange\n"
+            "  Symmetric  — vehicle changes when blocked, either side OK\n"
+            "  Asymmetric — vehicles prefer the rightmost lane\n"
+            "Only active for systems with ≥2 same-direction lanes."
+        )
+        self.lc_p_change = QDoubleSpinBox()
+        self.lc_p_change.setRange(0.0, 1.0)
+        self.lc_p_change.setSingleStep(0.05)
+        self.lc_p_change.setDecimals(3)
+        self.lc_p_change.setValue(1.0)
+        self.lc_p_change.setToolTip(
+            "lc_p_change: Probability that an eligible vehicle actually performs\n"
+            "the lane change on a given step (0 = never, 1 = always)."
+        )
+        lc_form.addRow("Behaviour", self.lc_model)
+        lc_form.addRow("Change prob.", self.lc_p_change)
+        outer.addWidget(self.lc_group)
+        # Disabled by default; enabled by CATab when the preset has parallel lanes.
+        self.set_lane_change_enabled(False)
+
         outer.addStretch(1)
 
-        for w in (self.n_steps, self.rng_seed, self.v_max, self.p_slow):
+        for w in (self.n_steps, self.rng_seed, self.v_max, self.p_slow,
+                  self.lc_p_change):
             w.valueChanged.connect(self.params_changed.emit)
+        self.lc_model.currentIndexChanged.connect(lambda _i: self.params_changed.emit())
+
+    def set_lane_change_enabled(self, enabled: bool):
+        """Enable/disable the Lane-change group.
+
+        Visually greys out the controls when the current preset has no
+        parallel same-direction lanes (so the parameters are meaningless).
+        """
+        self.lc_group.setEnabled(bool(enabled))
 
     def sim_params(self) -> SimParams:
+        # Pass lane-change settings only when the controls are enabled
+        # (i.e. the current preset actually has parallel same-direction lanes).
+        if self.lc_group.isEnabled():
+            lc_model = int(self.lc_model.currentData())
+            lc_p_change = float(self.lc_p_change.value())
+        else:
+            lc_model = -1
+            lc_p_change = 1.0
         return SimParams(
             n_steps=self.n_steps.value(),
             v_max=self.v_max.value(),
             p_slow=float(self.p_slow.value()),
             rng_seed=self.rng_seed.value(),
+            lc_model=lc_model,
+            lc_p_change=lc_p_change,
         )
 
     def preset_kwargs(self, preset: str) -> Dict[str, float]:
