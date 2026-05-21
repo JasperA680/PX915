@@ -112,7 +112,7 @@ program run_network
 
     ! ----- Simulation loop -----
     do step = 1, n_steps
-        call network_step(net, params%model, params%lc_model, params%lc_p_change)
+        call network_step(net, params%model, params%lc_model, params%lc_p_change, params%v_max, params%p_slow)
 
         ! Record state and per-road counters.
         do r = 1, n_roads

@@ -35,10 +35,12 @@ module network_simulation_mod
 
 contains
 
-    subroutine network_step(net, model, lc_model, lc_p_change)
+    subroutine network_step(net, model, lc_model, lc_p_change, v_max, p_slow)
         type(road_network_t), intent(inout) :: net
         integer, optional,    intent(in)    :: lc_model
         real,    optional,    intent(in)    :: lc_p_change
+        integer, intent(in) :: v_max
+        real, intent(in)    :: p_slow
         character(len=16) :: model
         integer :: model_int
         real    :: p_change_val
@@ -47,6 +49,8 @@ contains
         p_change_val = 1.0
         if (present(lc_model))    model_int    = lc_model
         if (present(lc_p_change)) p_change_val = lc_p_change
+
+
 
         call snapshot_network(net)
         if (model_int /= LC_DISABLED) then
@@ -59,9 +63,9 @@ contains
         case ('TASEP')
             call tasep_lane_step(net)
         case ('NS')
-            call NS_model_step(net)
+            call NS_model_step(net, v_max, p_slow)
         case default                        ! Just default to NS model if input not recognised (could change to an error code or something?)
-            call NS_model_step(net)
+            call NS_model_step(net, v_max, p_slow)
         end select
 
     end subroutine network_step

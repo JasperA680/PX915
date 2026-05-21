@@ -16,12 +16,10 @@ module NS_model
 
     public :: NS_model_step
 
-    integer, parameter :: V_MAX  = 5     ! max velocity (cells per step)
-    real,    parameter :: P_SLOW = 0.2   ! random deceleration probability
 
 contains
     
-    subroutine NS_model_step(net)
+    subroutine NS_model_step(net, v_max, p_slow)
         ! Per-lane Nagel-Schreckenberg step for the networked model.
         !
         ! Inbound lane (junction at site L, open at site 1):
@@ -33,8 +31,11 @@ contains
         !   * Bulk hops use old state.
         !   * Open outflow at site L with beta.
         !   * Site 1 is NOT entered here (junction step places vehicles there).
-        
+
         type(road_network_t), intent(inout) :: net
+        integer, intent(in) :: v_max
+        real, intent(in)    :: p_slow
+
         integer :: r, k, L, i_site, j, gap, v, new_pos
         real    :: rnd
         logical :: exit_now, junc_moved_L
@@ -87,10 +88,10 @@ contains
                     end if
 
                     v = net%roads(r)%lane(k)%old(i_site)%velocity
-                    v = min(v + 1, V_MAX)
+                    v = min(v + 1, v_max)
                     v = min(v, gap)
                     call random_number(rnd)
-                    if (rnd < P_SLOW .and. v > 0) v = v - 1
+                    if (rnd < p_slow .and. v > 0) v = v - 1
 
                     new_pos = min(i_site + v, L)
                     v = new_pos - i_site
