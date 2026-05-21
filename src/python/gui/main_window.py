@@ -40,23 +40,46 @@ CA_MODELS = ("NS", "TASEP")
 # Presets where TASEP physics is appropriate (single 1D chain only).
 TASEP_OK_PRESETS = {"single_lane"}
 
+# Presets where the fundamental-diagram sweep is meaningful.  The sweep
+# uses pure-Python TASEP on a single chain, so junctions / multilane / routing
+# scenarios don't relate to its J(ρ) curve.
+FD_OK_PRESETS = {"single_lane"}
+
 
 class FDSweepThread(QThread):
-    """Run the pure-Python TASEP fundamental_diagram() sweep off the UI thread."""
+    """Run a pure-Python fundamental-diagram sweep off the UI thread.
 
-    finished_ok = pyqtSignal(object, object, int, int)   # rho, J, L, n_points
+    Supports both ``TASEP`` (α/β phase-diagram sweep on an open chain) and
+    ``NS`` (density sweep on a periodic ring; takes v_max and p_slow).
+    """
+
+    # rho, J, model_name, info_dict
+    finished_ok = pyqtSignal(object, object, str, dict)
     finished_error = pyqtSignal(str)
 
-    def __init__(self, L: int = 50, n_points: int = 30, parent=None):
+    def __init__(self, model: str = "TASEP", L: int = 50, n_points: int = 30,
+                 v_max: int = 5, p_slow: float = 0.2, parent=None):
         super().__init__(parent)
+        self.model = model
         self.L = L
         self.n_points = n_points
+        self.v_max = v_max
+        self.p_slow = p_slow
 
     def run(self):
         try:
-            from python.analysis import fundamental_diagram
-            rho, J = fundamental_diagram(L=self.L, n_points=self.n_points)
-            self.finished_ok.emit(rho, J, self.L, self.n_points)
+            if self.model == "NS":
+                from python.analysis import fundamental_diagram_ns
+                rho, J = fundamental_diagram_ns(
+                    L=self.L, n_points=self.n_points,
+                    v_max=self.v_max, p_slow=self.p_slow,
+                )
+            else:
+                from python.analysis import fundamental_diagram
+                rho, J = fundamental_diagram(L=self.L, n_points=self.n_points)
+            info = dict(L=self.L, n_points=self.n_points,
+                        v_max=self.v_max, p_slow=self.p_slow)
+            self.finished_ok.emit(rho, J, self.model, info)
         except Exception as exc:
             self.finished_error.emit(str(exc))
 
@@ -81,6 +104,11 @@ class CATab(QWidget):
         self._road_overrides: dict = {}
         # Per-junction routing overrides (dict[junction_id -> list[list[float]]]).
         self._junction_overrides: dict = {}
+        # Summary of the last successful run, shown by the stale indicator.
+        self._last_run_summary: str = ""
+        self._has_results: bool = False
+        # FD-sweep tracking is independent of the main run.
+        self._has_fd_results: bool = False
 
         # --- Toolbar row: preset + model + run ---
         toolbar = QWidget()
@@ -104,9 +132,14 @@ class CATab(QWidget):
         self.fd_button = QPushButton("Run FD sweep")
         self.fd_button.setMinimumWidth(140)
         self.fd_button.setToolTip(
-            "Run a TASEP fundamental-diagram sweep (α with β=1, β with α=1) "
-            "using pure-Python analysis.fundamental_diagram(). Populates the "
-            "Fundamental Diagram plot tab when finished."
+            "Run a fundamental-diagram sweep using the currently selected\n"
+            "Model (NS or TASEP). Populates the Fundamental Diagram plot tab.\n\n"
+            "  • TASEP: open-chain α/β sweep (β=1 then α=1 branches).\n"
+            "  • NS:    periodic-ring density sweep at the form's v_max / p_slow.\n\n"
+            "Only meaningful for the single_lane preset — both sweeps run a\n"
+            "homogeneous 1D system, so junctions / multilane / routing\n"
+            "scenarios don't relate to the J(ρ) curve and the button is\n"
+            "greyed out there."
         )
         toolbar_row.addWidget(self.fd_button)
         toolbar_row.addStretch(1)
@@ -148,15 +181,17 @@ class CATab(QWidget):
 
         # --- Signals ---
         self.preset_combo.currentTextChanged.connect(self._on_preset_changed_ca)
-        self.model_combo.currentTextChanged.connect(lambda _m: None)  # no rebuild needed
+        self.model_combo.currentTextChanged.connect(self._on_model_changed)
         self.param_form.params_changed.connect(self._rebuild_spec)
+        self.param_form.params_changed.connect(self._mark_stale)
         self.run_button.clicked.connect(self._on_run)
         self.fd_button.clicked.connect(self._on_run_fd)
         self.network_widget.road_clicked.connect(self._on_road_clicked)
         self.network_widget.junction_clicked.connect(self._on_junction_clicked)
 
-        # Bootstrap with the first preset (also greys out TASEP if needed).
+        # Bootstrap with the first preset (also greys out TASEP / FD if needed).
         self._sync_model_availability()
+        self._sync_fd_availability()
         self._rebuild_spec()
 
     def _on_preset_changed_ca(self, name: str):
@@ -164,7 +199,74 @@ class CATab(QWidget):
         self._road_overrides = {}
         self._junction_overrides = {}
         self._sync_model_availability()
+        self._sync_fd_availability()
         self._rebuild_spec()
+        # Preset switch invalidates any displayed results.
+        self._mark_stale()
+
+    def _on_model_changed(self, _name: str):
+        # Switching the model means the next Run would produce different
+        # results; any currently-shown plots are stale from the new model's POV.
+        self._mark_stale()
+
+    def _mark_stale(self):
+        """Mark the plot panel + buttons as out-of-date.
+
+        Drives three indicators in concert:
+          - corner banner on the tab bar
+          - Run / Run-FD button styling (orange dot when their output is stale)
+          - FD tab title (so the user notices it inside the panel too)
+        """
+        if self._has_results:
+            self.plot_panel.set_status("stale", self._last_run_summary)
+        else:
+            self.plot_panel.set_status(None)
+        self._set_button_stale(self.run_button, "Run",          self._has_results)
+        self._set_button_stale(self.fd_button, "Run FD sweep",  self._has_fd_results)
+        self.plot_panel.set_fd_stale(self._has_fd_results)
+
+    def _mark_running(self):
+        preset = self.preset_combo.currentText()
+        model = self.model_combo.currentText()
+        self.plot_panel.set_status("running", f"{preset} / {model}")
+        # Run is active → clear its stale dot (it's about to refresh).
+        self._set_button_stale(self.run_button, "Run", False)
+
+    def _mark_fresh(self, summary: str):
+        self._last_run_summary = summary
+        self._has_results = True
+        self.plot_panel.set_status("fresh", summary)
+        self._set_button_stale(self.run_button, "Run", False)
+
+    def _mark_fd_fresh(self):
+        """Clear the stale indicator on the FD button + tab after a sweep."""
+        self._has_fd_results = True
+        self._set_button_stale(self.fd_button, "Run FD sweep", False)
+        self.plot_panel.set_fd_stale(False)
+
+    @staticmethod
+    def _set_button_stale(button, base_label: str, stale: bool):
+        if stale:
+            button.setText(f"{base_label}  ●")
+            button.setStyleSheet("color: #b08040; font-weight: bold;")
+        else:
+            button.setText(base_label)
+            button.setStyleSheet("")
+
+    def _sync_fd_availability(self):
+        """Grey out the Run-FD button + FD tab for presets where it isn't meaningful.
+
+        The FD sweep is a pure-Python single-lane TASEP exercise, so junctions
+        / multilane / routing presets don't relate to its J(ρ) curve.
+        """
+        name = self.preset_combo.currentText()
+        ok = name in FD_OK_PRESETS
+        self.fd_button.setEnabled(ok)
+        if not ok:
+            # Tab back to placeholder + disabled; any prior sweep result is wiped.
+            self.plot_panel.reset_fd()
+            self._has_fd_results = False
+            self._set_button_stale(self.fd_button, "Run FD sweep", False)
 
     def _sync_model_availability(self):
         """Grey out TASEP for any preset where it is not physically meaningful.
@@ -211,8 +313,8 @@ class CATab(QWidget):
                     ln.alpha = ov["alpha"]
                 if ov.get("beta") is not None and getattr(ln, "open_out", False):
                     ln.beta = ov["beta"]
-            if ov.get("length") is not None:
-                road.length = ov["length"]
+                if ov.get("length") is not None:
+                    ln.length = int(ov["length"])
         # Apply any per-junction routing overrides.
         for jid, routes in self._junction_overrides.items():
             j = next((j for j in spec.junctions if j.id == jid), None)
@@ -255,6 +357,7 @@ class CATab(QWidget):
             vals = dlg.values()
             self._road_overrides[road_id] = vals
             self._rebuild_spec()
+            self._mark_stale()
             self.log.emit(
                 f"R{road_id} overridden: α={vals['alpha']}  β={vals['beta']}  L={vals['length']}"
             )
@@ -273,6 +376,7 @@ class CATab(QWidget):
             new_routes = dlg.routes()
             self._junction_overrides[junction_id] = new_routes
             self._rebuild_spec()
+            self._mark_stale()
             summary = "  ".join(
                 "[" + ", ".join(f"{v:.2f}" for v in row) + "]"
                 for row in new_routes
@@ -305,6 +409,7 @@ class CATab(QWidget):
         self._runner.progress.connect(self._on_runner_progress)
         self._runner.finished_ok.connect(self._on_finished_ok)
         self._runner.finished_error.connect(self._on_finished_error)
+        self._mark_running()
         self._runner.start()
 
     def _on_runner_progress(self, frac: float, msg: str):
@@ -320,25 +425,59 @@ class CATab(QWidget):
     def _on_run_fd(self):
         if self._fd_runner is not None and self._fd_runner.isRunning():
             return
-        L = 50
+        model = self.model_combo.currentText()   # "NS" or "TASEP"
+        # Pull the road length from the current spec — that way the sweep
+        # uses whatever the user configured (preset default or per-road
+        # click-to-edit override).  FD button is only enabled for single_lane
+        # so the first road's first lane is the canonical length.
+        if (self._current_spec is not None
+                and self._current_spec.roads
+                and self._current_spec.roads[0].lanes):
+            L = int(self._current_spec.roads[0].lanes[0].length)
+        else:
+            L = 100 if model == "NS" else 50
         n_points = 30
+        v_max = int(self.param_form.v_max.value())
+        p_slow = float(self.param_form.p_slow.value())
         self.fd_button.setEnabled(False)
-        self.status.emit(f"running FD sweep L={L} ({2 * n_points} points)…")
-        self.log.emit(f"--- FD sweep L={L} points={n_points} ---")
-        self._fd_runner = FDSweepThread(L=L, n_points=n_points, parent=self)
+        if model == "NS":
+            self.status.emit(
+                f"running NS FD sweep L={L} v_max={v_max} p_slow={p_slow} "
+                f"({n_points} points)…"
+            )
+            self.log.emit(
+                f"--- NS FD sweep L={L} v_max={v_max} p_slow={p_slow} "
+                f"points={n_points} ---"
+            )
+        else:
+            self.status.emit(f"running TASEP FD sweep L={L} ({2 * n_points} points)…")
+            self.log.emit(f"--- TASEP FD sweep L={L} points={n_points} ---")
+        self._fd_runner = FDSweepThread(
+            model=model, L=L, n_points=n_points,
+            v_max=v_max, p_slow=p_slow, parent=self,
+        )
         self._fd_runner.finished_ok.connect(self._on_fd_ok)
         self._fd_runner.finished_error.connect(self._on_fd_error)
         self._fd_runner.start()
 
-    def _on_fd_ok(self, rho, J, L, n_points):
+    def _on_fd_ok(self, rho, J, model: str, info: dict):
         self.fd_button.setEnabled(True)
-        self.status.emit(f"FD sweep done — {len(rho)} points")
+        self.status.emit(f"{model} FD sweep done — {len(rho)} points")
         self.log.emit(
-            f"FD sweep complete: L={L}, {len(rho)} points  "
+            f"{model} FD sweep complete: L={info['L']}, {len(rho)} points  "
             f"(ρ range {float(rho.min()):.2f}–{float(rho.max()):.2f}, "
             f"J range {float(J.min()):.3f}–{float(J.max()):.3f})"
         )
-        self.plot_panel.set_fd_sweep(rho, J, title=f"Fundamental diagram  (L={L})")
+        title = (
+            f"Fundamental diagram ({model}, L={info['L']}, "
+            f"v_max={info['v_max']})" if model == "NS"
+            else f"Fundamental diagram ({model}, L={info['L']})"
+        )
+        self.plot_panel.set_fd_sweep(
+            rho, J, title=title,
+            model=model, v_max=int(info['v_max']),
+        )
+        self._mark_fd_fresh()
 
     def _on_fd_error(self, err: str):
         self.fd_button.setEnabled(True)
@@ -356,8 +495,13 @@ class CATab(QWidget):
             result = load_network_netcdf(nc_path)
             self.plot_panel.show_result(result)
             self._log_diagnostics(result)
+            preset = self.preset_combo.currentText()
+            model = self.model_combo.currentText()
+            params = self.param_form.sim_params()
+            self._mark_fresh(f"{preset} / {model} / {params.n_steps} steps")
         except Exception as exc:
             self.log.emit(f"plot error: {exc}")
+            self._mark_stale()
 
     def _log_diagnostics(self, result):
         """Print per-road steady-state ρ̄ and J̄ to the run log."""
@@ -383,6 +527,7 @@ class CATab(QWidget):
         self.status.emit("error")
         self.run_button.setEnabled(True)
         self.log.emit(f"ERROR: {err}")
+        self._mark_stale()
 
     def stop_running(self):
         if self._runner is not None and self._runner.isRunning():
@@ -406,6 +551,8 @@ class PDETab(QWidget):
         self._output_dir = output_dir
         self._runner: Optional[PDERunnerThread] = None
         self._suppress_custom_revert = False
+        self._last_run_summary: str = ""
+        self._has_results: bool = False
 
         # --- Toolbar: preset + run ---
         toolbar = QWidget()
@@ -453,10 +600,28 @@ class PDETab(QWidget):
         self.preset_combo.currentTextChanged.connect(self._on_preset_changed)
         self.param_form.params_changed.connect(self._on_form_edited)
         self.param_form.params_changed.connect(self._sync_multilane_tabs)
+        self.param_form.params_changed.connect(self._mark_stale)
         self.run_button.clicked.connect(self._on_run)
 
         # Match the initial form state.
         self._sync_multilane_tabs()
+
+    def _mark_stale(self):
+        if self._has_results:
+            self.plot_panel.set_status("stale", self._last_run_summary)
+        else:
+            self.plot_panel.set_status(None)
+        CATab._set_button_stale(self.run_button, "Run", self._has_results)
+
+    def _mark_running(self, summary: str):
+        self.plot_panel.set_status("running", summary)
+        CATab._set_button_stale(self.run_button, "Run", False)
+
+    def _mark_fresh(self, summary: str):
+        self._last_run_summary = summary
+        self._has_results = True
+        self.plot_panel.set_status("fresh", summary)
+        CATab._set_button_stale(self.run_button, "Run", False)
 
     def _sync_multilane_tabs(self):
         self.plot_panel.set_multilane_enabled(self.param_form.n_lanes.value() > 1)
@@ -471,6 +636,7 @@ class PDETab(QWidget):
             self._suppress_custom_revert = False
         if name != CUSTOM_LABEL:
             self.status.emit(f"preset: {name}")
+        self._mark_stale()
 
     def _on_form_edited(self):
         if self._suppress_custom_revert:
@@ -507,6 +673,7 @@ class PDETab(QWidget):
         self._runner.progress.connect(self._on_runner_progress)
         self._runner.finished_ok.connect(self._on_finished_ok)
         self._runner.finished_error.connect(self._on_finished_error)
+        self._mark_running(f"{preset} / M={params['M']} / n_steps={params['n_steps']}")
         self._runner.start()
 
     def _on_runner_progress(self, frac: float, msg: str):
@@ -523,13 +690,23 @@ class PDETab(QWidget):
         try:
             data = load_pde_netcdf(nc_path)
             self.plot_panel.show_result(data)
+            preset = self.preset_combo.currentText() or "custom"
+            attrs = data.get("attrs", {})
+            n_lanes = int(data.get("n_lanes", 1))
+            summary = (
+                f"{preset} / M={attrs.get('M','?')} / n_steps={attrs.get('n_steps','?')}"
+                f" / lanes={n_lanes}"
+            )
+            self._mark_fresh(summary)
         except Exception as exc:
             self.log.emit(f"plot error: {exc}")
+            self._mark_stale()
 
     def _on_finished_error(self, err: str):
         self.status.emit("error")
         self.run_button.setEnabled(True)
         self.log.emit(f"ERROR: {err}")
+        self._mark_stale()
 
     def stop_running(self):
         if self._runner is not None and self._runner.isRunning():

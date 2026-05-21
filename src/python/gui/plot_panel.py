@@ -8,7 +8,7 @@ from PyQt5.QtCore import Qt, pyqtSignal, QEvent
 from PyQt5.QtGui import QStandardItem, QStandardItemModel
 from PyQt5.QtWidgets import (
     QTabWidget, QWidget, QVBoxLayout, QHBoxLayout,
-    QComboBox, QSlider, QLabel, QListView,
+    QComboBox, QSlider, QLabel, QListView, QFrame,
 )
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg
 from matplotlib.figure import Figure
@@ -139,12 +139,13 @@ class _DensityTab(_CanvasTab):
 
 
 class _FundamentalDiagramTab(_CanvasTab):
-    """Plot of J vs ρ from a TASEP parameter sweep.
+    """Plot of J vs ρ from a parameter sweep (TASEP or NS).
 
-    A single (α, β) run is one point in J–ρ space; the full diagram requires
-    a sweep over α (with β=1) and β (with α=1).  Use the toolbar's
-    "Run FD sweep" button to populate this tab.  Plotted via the same
-    ``plot_fundamental_diagram`` function used by scripts/run_fundamental_diagram.py.
+    A single run is one point in J–ρ space; the full diagram requires a sweep:
+    TASEP uses an α/β sweep on an open chain, NS uses a density sweep on a
+    periodic ring.  Use the "Run FD sweep" button — the Model combo decides
+    which sweep runs.  Plots use ``plot_fundamental_diagram`` (also used by
+    scripts/run_fundamental_diagram.py).
     """
 
     def __init__(self, parent=None):
@@ -157,9 +158,11 @@ class _FundamentalDiagramTab(_CanvasTab):
         ax.text(
             0.5, 0.5,
             "Fundamental diagram\n\n"
-            "A J–ρ diagram requires a parameter sweep over α (or β),\n"
-            "not a single simulation run.\n\n"
-            "Click 'Run FD sweep' on the toolbar to populate this plot.",
+            "A J–ρ diagram requires a parameter sweep, not a single run.\n\n"
+            "Click 'Run FD sweep' on the toolbar — the active Model decides\n"
+            "which sweep is performed:\n"
+            "  • NS:    periodic-ring density sweep (uses v_max + p_slow)\n"
+            "  • TASEP: open-chain α/β phase-diagram sweep",
             ha="center", va="center",
             transform=ax.transAxes,
             fontsize=11, color="gray",
@@ -168,11 +171,13 @@ class _FundamentalDiagramTab(_CanvasTab):
         self.ax = ax
         self.canvas.draw_idle()
 
-    def set_sweep(self, rho, J, title: str = None):
+    def set_sweep(self, rho, J, title: str = None,
+                  model: str = 'TASEP', v_max: int = 1):
         """Populate the FD scatter from a parameter sweep."""
         self.figure.clear()
         ax = self.figure.add_subplot(111)
-        plot_fundamental_diagram(rho, J, ax=ax, title=title)
+        plot_fundamental_diagram(rho, J, ax=ax, title=title,
+                                 model=model, v_max=v_max)
         self.ax = ax
         self.canvas.draw_idle()
 
@@ -306,6 +311,41 @@ class PlotPanel(QTabWidget):
         # FD tab disabled until a sweep populates it.
         self.setTabEnabled(self.FD_TAB_INDEX, False)
 
+        # Stale-result status indicator (top-right corner of the tab bar).
+        # Wrap in a holder so we can give it real padding without the QTabBar
+        # eating it.  Padding pushes the label up + away from the tabs so it
+        # doesn't overlap the tab text.
+        holder = QWidget()
+        hbox = QHBoxLayout(holder)
+        hbox.setContentsMargins(8, 0, 14, 4)
+        self._status = QLabel()
+        hbox.addWidget(self._status)
+        self.setCornerWidget(holder, Qt.TopRightCorner)
+        self.set_status(None)   # initial "no results yet"
+
+    # ------------------------------------------------------------------
+    # Stale / fresh status indicator
+    # ------------------------------------------------------------------
+
+    def set_status(self, kind: str, summary: str = ""):
+        """Update the corner indicator with a minimal label.
+
+        kind: 'fresh', 'stale', 'running', or None / 'empty'.
+        ``summary`` is accepted for API parity but no longer displayed.
+        """
+        if kind == "fresh":
+            color, text = "#4a8a6a", "● up to date"
+        elif kind == "stale":
+            color, text = "#b08040", "● stale"
+        elif kind == "running":
+            color, text = "#5a7fad", "● running…"
+        else:
+            color, text = "#9a9a9a", "● no results"
+        self._status.setText(text)
+        self._status.setStyleSheet(
+            f"color: {color}; font-size: 10px; font-weight: 500;"
+        )
+
     def clear(self):
         self.tab_density.clear()
         self.tab_spacetime.clear()
@@ -316,8 +356,25 @@ class PlotPanel(QTabWidget):
         self.tab_spacetime.set_result(result)
         self.tab_heatmap.set_result(result)
 
-    def set_fd_sweep(self, rho, J, title: str = None):
+    def set_fd_sweep(self, rho, J, title: str = None,
+                     model: str = 'TASEP', v_max: int = 1):
         """Populate the FD tab with a sweep result and enable it."""
-        self.tab_fd.set_sweep(rho, J, title=title)
+        self.tab_fd.set_sweep(rho, J, title=title, model=model, v_max=v_max)
         self.setTabEnabled(self.FD_TAB_INDEX, True)
+        self.setTabText(self.FD_TAB_INDEX, "Fundamental diagram")
         self.setCurrentIndex(self.FD_TAB_INDEX)
+
+    def set_fd_stale(self, stale: bool):
+        """Annotate the FD tab title to flag its data as out-of-date."""
+        if not self.isTabEnabled(self.FD_TAB_INDEX):
+            return  # no data yet → no point flagging staleness
+        label = "Fundamental diagram"
+        if stale:
+            label = "● Fundamental diagram (stale)"
+        self.setTabText(self.FD_TAB_INDEX, label)
+
+    def reset_fd(self):
+        """Restore the FD tab placeholder and disable it (e.g. on preset switch)."""
+        self.tab_fd._show_placeholder()
+        self.setTabEnabled(self.FD_TAB_INDEX, False)
+        self.setTabText(self.FD_TAB_INDEX, "Fundamental diagram")

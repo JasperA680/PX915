@@ -80,25 +80,47 @@ def plot_current(data, ax=None, title=None):
     return fig, ax
 
 
-def plot_fundamental_diagram(rho_vals, J_vals, ax=None, title=None):
-    """Flow J vs density rho with the theoretical J = rho(1-rho) parabola."""
+def plot_fundamental_diagram(rho_vals, J_vals, ax=None, title=None,
+                             model: str = 'TASEP', v_max: int = 1):
+    """Flow J vs density ρ with a model-appropriate reference curve.
+
+    Parameters
+    ----------
+    model : {'TASEP', 'NS'}
+        TASEP overlays the analytical J = min(ρ, 1−ρ) parabola.
+        NS has no clean closed-form reference, so just shows the sweep
+        and marks the critical density ρ_c ≈ 1/(v_max+1).
+    v_max : int
+        NS speed limit; only used for the y-axis scale and ρ_c marker.
+    """
     if ax is None:
         fig, ax = plt.subplots(figsize=(6, 5))
     else:
         fig = ax.figure
 
-    rho_theory = np.linspace(0, 1, 300)
-    J_theory = np.minimum(rho_theory, 1 - rho_theory)
+    if model == 'NS':
+        # Mark the NS critical density.
+        rho_c = 1.0 / (v_max + 1.0)
+        ax.axvline(rho_c, color='grey', linestyle=':', linewidth=1,
+                   label=f'ρ_c ≈ 1/(v_max+1) = {rho_c:.3f}')
+        ax.scatter(rho_vals, J_vals, s=22, color='steelblue', alpha=0.85,
+                   zorder=3, label=f'NS sweep (v_max={v_max})')
+        # y-scale: data plus 20% headroom.
+        ymax = max(0.4, float(np.max(J_vals)) * 1.25) if len(J_vals) else 1.0
+        ax.set_ylim(0, ymax)
+    else:
+        rho_theory = np.linspace(0, 1, 300)
+        J_theory = np.minimum(rho_theory, 1 - rho_theory)
+        ax.plot(rho_theory, J_theory, 'k--', linewidth=1.5,
+                label='J = min(ρ, 1−ρ) theory')
+        ax.scatter(rho_vals, J_vals, s=18, color='steelblue', alpha=0.8,
+                   zorder=3, label='TASEP sweep')
+        ax.set_ylim(0, 0.8)
 
-    ax.plot(rho_theory, J_theory, 'k--',
-        linewidth=1.5, label='J = min(ρ, 1−ρ) theory')
-    ax.scatter(rho_vals, J_vals, s=18, color='steelblue',
-               alpha=0.8, zorder=3, label='simulation')
     ax.set_xlabel('Density ρ')
     ax.set_ylabel('Current J')
     ax.set_xlim(0, 1)
-    ax.set_ylim(0, 0.8)
-    ax.set_title(title or 'Fundamental diagram')
+    ax.set_title(title or f'Fundamental diagram  ({model})')
     ax.legend(fontsize=9)
     return fig, ax
 

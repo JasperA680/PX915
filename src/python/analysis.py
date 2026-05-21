@@ -83,6 +83,109 @@ def fundamental_diagram(L=50, n_steps=3000, burnin=None, n_points=30, seed=None)
     return np.array(rho_list), np.array(J_list)
 
 
+# ---------------------------------------------------------------------------
+# Nagel–Schreckenberg fundamental diagram (pure-Python, periodic ring)
+# ---------------------------------------------------------------------------
+
+def ns_step_periodic(positions, velocities, L, v_max, p_slow, rng):
+    """One parallel-update Nagel–Schreckenberg step on a periodic L-cell ring.
+
+    Parameters
+    ----------
+    positions   : sorted 1D int array of occupied cell indices, 0..L-1
+    velocities  : 1D int array of velocities, aligned with ``positions``
+    L           : ring length (number of cells)
+    v_max       : maximum vehicle speed (cells/step)
+    p_slow      : random dawdle probability per occupied cell per step
+    rng         : ``numpy.random.Generator``
+
+    Returns
+    -------
+    (new_positions, new_velocities, moves_this_step)
+        new_positions are sorted ascending; ``moves_this_step`` is the sum of
+        new velocities (used directly as the flow contribution).
+    """
+    n = len(positions)
+    if n == 0:
+        return positions, velocities, 0
+
+    # 1. Accelerate.
+    new_v = np.minimum(velocities + 1, v_max)
+
+    # 2. Brake to gap (distance to the next car, periodic).
+    next_pos = np.roll(positions, -1)
+    gaps = (next_pos - positions - 1) % L
+    new_v = np.minimum(new_v, gaps)
+
+    # 3. Random dawdling.
+    randoms = rng.random(n)
+    slow_mask = (new_v > 0) & (randoms < p_slow)
+    new_v = np.where(slow_mask, new_v - 1, new_v)
+
+    # 4. Move.
+    new_pos = (positions + new_v) % L
+    moves = int(new_v.sum())
+
+    # Maintain ascending order even after wrap-around so the gap calculation
+    # on the next step stays correct.
+    order = np.argsort(new_pos, kind='stable')
+    return new_pos[order], new_v[order], moves
+
+
+def run_ns_density(L, n_steps, n_vehicles, v_max=5, p_slow=0.2,
+                   burnin=None, seed=None):
+    """Run NS on a periodic L-cell ring with ``n_vehicles`` cars.
+
+    Density is constant (no inflow/outflow), so this returns the (ρ, J̄) point
+    where J̄ is the time-averaged flow over the post-burn-in window.
+    """
+    if burnin is None:
+        burnin = max(500, 5 * L)
+    if n_vehicles <= 0:
+        return 0.0, 0.0
+    if n_vehicles >= L:
+        return 1.0, 0.0
+
+    rng = np.random.default_rng(seed)
+    positions = np.sort(rng.choice(L, n_vehicles, replace=False))
+    velocities = np.zeros(n_vehicles, dtype=int)
+
+    for _ in range(burnin):
+        positions, velocities, _ = ns_step_periodic(
+            positions, velocities, L, v_max, p_slow, rng)
+
+    total_moves = 0
+    for _ in range(n_steps):
+        positions, velocities, moves = ns_step_periodic(
+            positions, velocities, L, v_max, p_slow, rng)
+        total_moves += moves
+
+    rho = n_vehicles / L
+    J = total_moves / (L * n_steps)
+    return rho, J
+
+
+def fundamental_diagram_ns(L=100, n_steps=1500, n_points=30,
+                           v_max=5, p_slow=0.2, seed=None):
+    """Return (rho, J) sweep for NS on a periodic ring.
+
+    Unlike the TASEP function, this sweeps the global density directly
+    (periodic boundary, n_vehicles fixed per point) rather than (α, β).
+    With p_slow > 0 the resulting curve is the Nagel–Schreckenberg
+    inverse-λ shape: linear rise up to ρ_c ≈ 1/(v_max+1), then a near-linear
+    fall toward zero at jam density.
+    """
+    rho_targets = np.linspace(0.02, 0.98, n_points)
+    rho_list, J_list = [], []
+    for rho in rho_targets:
+        n = max(1, int(round(rho * L)))
+        rho_meas, J = run_ns_density(
+            L, n_steps, n, v_max=v_max, p_slow=p_slow, seed=seed)
+        rho_list.append(rho_meas)
+        J_list.append(J)
+    return np.array(rho_list), np.array(J_list)
+
+
 def pde_fundamental_diagram(
     n_points=20, n_steps=2000, M=200,
     v_max=1.0, rho_max=1.0,

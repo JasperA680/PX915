@@ -301,6 +301,32 @@ class PDEPlotPanel(QTabWidget):
         for i in _MULTILANE_TAB_INDICES:
             self.setTabEnabled(i, False)
 
+        # Stale-result status indicator (top-right corner of the tab bar).
+        from PyQt5.QtCore import Qt
+        from PyQt5.QtWidgets import QLabel, QWidget, QHBoxLayout
+        holder = QWidget()
+        hbox = QHBoxLayout(holder)
+        hbox.setContentsMargins(8, 0, 14, 4)
+        self._status = QLabel()
+        hbox.addWidget(self._status)
+        self.setCornerWidget(holder, Qt.TopRightCorner)
+        self.set_status(None)
+
+    def set_status(self, kind, summary: str = ""):
+        """Update the corner indicator with a minimal label.  ``summary`` accepted for API parity."""
+        if kind == "fresh":
+            color, text = "#4a8a6a", "● up to date"
+        elif kind == "stale":
+            color, text = "#b08040", "● stale"
+        elif kind == "running":
+            color, text = "#5a7fad", "● running…"
+        else:
+            color, text = "#9a9a9a", "● no results"
+        self._status.setText(text)
+        self._status.setStyleSheet(
+            f"color: {color}; font-size: 10px; font-weight: 500;"
+        )
+
     def set_multilane_enabled(self, enabled: bool):
         """Enable/disable the two multi-lane tabs without touching plot data."""
         for i in _MULTILANE_TAB_INDICES:
