@@ -78,7 +78,7 @@ PDE_VLIMIT ?= 1.0
 PDE_OUT    ?= data/output/pde_simulation.nc
 
 # Default target: build all executables
-all: test test_types test_init_crossroad test_junction test_network_run test_ns_grid test_ns_periodic test_lane_change $(FUND_EXE) $(PDE_EXE)
+all: test test_types test_init_crossroad test_junction test_network_run test_ns_grid test_ns_periodic test_lane_change run_network $(FUND_EXE) $(PDE_EXE)
 
 # Build existing test program (needs NetCDF)
 test: $(TEST_EXE)
