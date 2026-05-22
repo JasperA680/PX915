@@ -75,3 +75,13 @@ The ``pde_lanechange`` module contains conservative source terms for density
 exchange between adjacent lanes in the multilane PDE model.
 
 .. f:autosrcfile:: pde_lanechange.f90
+
+
+PDE driver program
+~~~~~~~~~~~~~~~~~~
+
+The ``pde_driver`` program is the executable entry point for the PDE solver.
+It parses positional command-line arguments, constructs the parameter set,
+runs the time loop, and writes the result to a NetCDF file.
+
+.. f:autosrcfile:: pde_driver.f90
