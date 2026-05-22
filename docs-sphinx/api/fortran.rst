@@ -6,9 +6,9 @@ modules in the traffic-flow codebase.
 
 The Fortran code is split into two main modelling approaches:
 
-- cellular automata models, including the one-dimensional TASEP and
+* cellular automata models, including the one-dimensional TASEP and
   Nagel-Schreckenberg update routines;
-- continuum PDE models, including the single-lane and multilane LWR solvers.
+* continuum PDE models, including the single-lane and multilane LWR solvers.
 
 
 Cellular automata models
@@ -24,13 +24,13 @@ boundary entrance and exit rules, and routines for measuring density.
 .. f:autosrcfile:: tasep.f90
 
 
-Nagel-Schreckenberg Model
+Nagel-Schreckenberg model
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The ``ns_model`` module contains the update logic for the implementation of
-a Nagel-Schreckenberg type cellular automaton model, introducing variable
-speeds and more realistic driver behaviour. It defines the update logic, 
-as well a universal speed limit for all cars.
+The ``ns_model`` module contains the update logic for the implementation of a
+Nagel-Schreckenberg type cellular automaton model, introducing variable speeds
+and more realistic driver behaviour. It defines the update logic and a universal
+speed limit for all cars.
 
 .. f:autosrcfile:: ns_model.f90
 
