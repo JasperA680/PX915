@@ -14,8 +14,10 @@ from __future__ import annotations
 import math
 from typing import Optional
 
-from PyQt5.QtCore import pyqtSignal
-from PyQt5.QtWidgets import QVBoxLayout, QHBoxLayout, QWidget, QComboBox, QLabel
+from PyQt5.QtCore import pyqtSignal, Qt
+from PyQt5.QtWidgets import (
+    QVBoxLayout, QHBoxLayout, QWidget, QComboBox, QLabel, QToolButton,
+)
 from matplotlib.backends.backend_qt5agg import (
     FigureCanvasQTAgg,
     NavigationToolbar2QT,
@@ -58,6 +60,28 @@ class NetworkWidget(QWidget):
             "Jump-zoom: 'All' shows the whole network, or pick a road to zoom in."
         )
         self._focus_row.addWidget(self.focus_combo, stretch=1)
+
+        # Small "i" button with a tooltip explaining the interactions.
+        self._info_button = QToolButton()
+        self._info_button.setText("i")
+        self._info_button.setAutoRaise(True)
+        self._info_button.setCursor(Qt.WhatsThisCursor)
+        self._info_button.setStyleSheet(
+            "QToolButton { border: 1px solid #888; border-radius: 8px; "
+            "min-width: 16px; min-height: 16px; max-width: 16px; max-height: 16px; "
+            "font-weight: bold; font-style: italic; color: #555; padding: 0; }"
+            "QToolButton:hover { background: #eef3fa; color: #1e6bb8; }"
+        )
+        self._info_button.setToolTip(
+            "Network preview interactions:\n"
+            "  • Use the toolbar buttons (pan/zoom/home) to navigate.\n"
+            "  • Use the 'Focus on' dropdown to jump-zoom to a specific road.\n"
+            "  • Click a road line to edit its α, β and length.\n"
+            "  • Click a junction (black dot) to edit its routing matrix.\n"
+            "  • Labels (R1/R2/α/β) appear once you zoom in close enough."
+        )
+        self._focus_row.addWidget(self._info_button)
+
         focus_holder = QWidget()
         focus_holder.setLayout(self._focus_row)
 
