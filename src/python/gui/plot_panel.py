@@ -51,8 +51,11 @@ class _CheckableComboBox(QComboBox):
 
     selectionChanged = pyqtSignal(list)
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, noun: str = "roads"):
         super().__init__(parent)
+        # Plural noun used in the summary text ("3 / 4 {noun}", "All {noun}", …).
+        # Set to "selections" / "options" for non-road selectors.
+        self._noun = noun
         self.setEditable(True)
         self.lineEdit().setReadOnly(True)
         self.setModel(QStandardItemModel(0, 1, self))
@@ -61,6 +64,10 @@ class _CheckableComboBox(QComboBox):
         # while the user is ticking boxes.
         self.view().viewport().installEventFilter(self)
         self.view().pressed.connect(self._on_item_pressed)
+
+    def set_noun(self, noun: str):
+        self._noun = noun
+        self._update_display()
 
     def eventFilter(self, source, event):
         if (source is self.view().viewport()
@@ -96,11 +103,11 @@ class _CheckableComboBox(QComboBox):
         if not n:
             self.lineEdit().setText("")
         elif len(checked) == n:
-            self.lineEdit().setText("All roads")
+            self.lineEdit().setText(f"All {self._noun}")
         elif not checked:
-            self.lineEdit().setText("No roads selected")
+            self.lineEdit().setText(f"No {self._noun} selected")
         else:
-            self.lineEdit().setText(f"{len(checked)} / {n} roads")
+            self.lineEdit().setText(f"{len(checked)} / {n} {self._noun}")
 
 
 # ---------------------------------------------------------------------------
@@ -108,33 +115,152 @@ class _CheckableComboBox(QComboBox):
 # ---------------------------------------------------------------------------
 
 class _DensityTab(_CanvasTab):
+    """Density vs time — two cooperating multi-selects.
+
+    Box 1 (Roads): pick which roads to include.  Single-lane roads from this
+    list are auto-plotted (just their one density line) — they don't appear
+    in box 2 since there's no choice to make.
+
+    Box 2 (Show): dynamically populated with one entry per (multi-lane road,
+    trace) combination.  E.g. picking R2 + R3 in box 1 (both 2-lane) gives
+    six rows: 'R2 Combined / R2 L1 / R2 L2 / R3 Combined / R3 L1 / R3 L2'.
+    Newly added roads default to having their 'Combined' entry ticked.
+    """
+
     def __init__(self, parent=None):
         super().__init__(parent)
+        import numpy as np
+        self._np = np
+
         row = QHBoxLayout()
         row.addWidget(QLabel("Roads:"))
         self.road_selector = _CheckableComboBox()
         self.road_selector.setMinimumWidth(140)
+        self.road_selector.setToolTip(
+            "Roads to include.  Nothing checked → empty plot.  Multi-lane "
+            "roads also populate the 'Show' box with per-lane trace options."
+        )
         row.addWidget(self.road_selector)
+        row.addSpacing(12)
+        self._lane_label = QLabel("Show:")
+        row.addWidget(self._lane_label)
+        self.lane_selector = _CheckableComboBox(noun="selections")
+        self.lane_selector.setMinimumWidth(180)
+        self.lane_selector.setToolTip(
+            "Per-road trace options for multi-lane roads in the 'Roads' box.\n"
+            "'R2 Combined' = road-averaged density of R2.\n"
+            "'R2 L1'        = lane 1 of R2 only."
+        )
+        row.addWidget(self.lane_selector)
         row.addStretch(1)
         self._layout.insertLayout(0, row)
+
         self._result: Optional[NetworkResult] = None
-        self.road_selector.selectionChanged.connect(self._refresh)
+        # 1-based road_id → number of lanes on that road.
+        self._lanes_per_road: dict = {}
+        # box-2 items: (road_0based, lane_idx_or_None), parallel to combo rows.
+        self._lane_items: list = []
+        # Tracks which multi-lane roads were already in box 1 last time, so
+        # _on_roads_changed can spot newly-ticked ones and auto-check their
+        # 'Combined' entry.
+        self._prev_multilane_roads: set = set()
+
+        self.road_selector.selectionChanged.connect(self._on_roads_changed)
+        self.lane_selector.selectionChanged.connect(self._refresh)
 
     def set_result(self, result: NetworkResult):
         self._result = result
+        lane_road = self._np.asarray(result.lane_road_id)
         n_roads = result.road_density.shape[1]
-        self.road_selector.selectionChanged.disconnect(self._refresh)
-        self.road_selector.populate([f"R{r + 1}" for r in range(n_roads)])
-        self.road_selector.selectionChanged.connect(self._refresh)
+        self._lanes_per_road = {
+            r + 1: int((lane_road == (r + 1)).sum()) for r in range(n_roads)
+        }
+        self._prev_multilane_roads = set()
+        self._lane_items = []
+
+        road_labels = [f"R{r + 1}" for r in range(n_roads)]
+
+        self.road_selector.selectionChanged.disconnect(self._on_roads_changed)
+        self.lane_selector.selectionChanged.disconnect(self._refresh)
+        self.road_selector.populate(road_labels, all_checked=False)
+        self.lane_selector.populate([], all_checked=False)
+        self.road_selector.selectionChanged.connect(self._on_roads_changed)
+        self.lane_selector.selectionChanged.connect(self._refresh)
+
+        # Box 2 starts hidden (nothing in box 1 yet).
+        self._lane_label.setVisible(False)
+        self.lane_selector.setVisible(False)
         self._refresh()
 
-    def _refresh(self):
+    def _on_roads_changed(self, _checked=None):
+        """Rebuild box 2 from the current box-1 selection, then refresh."""
         if self._result is None:
             return
-        selected = self.road_selector.checked_indices()
+        road_idx = self.road_selector.checked_indices()
+
+        # Multi-lane roads that survived the change keep their box-2 state;
+        # newly added ones get 'Combined' auto-checked.
+        prev_checked = set()
+        for i in self.lane_selector.checked_indices():
+            if 0 <= i < len(self._lane_items):
+                prev_checked.add(self._lane_items[i])
+
+        new_items: list = []
+        new_labels: list = []
+        check_flags: list = []
+        new_multilane_roads = set()
+        for r in road_idx:
+            n_lanes = self._lanes_per_road.get(r + 1, 0)
+            if n_lanes <= 1:
+                continue
+            new_multilane_roads.add(r)
+            newly_added = r not in self._prev_multilane_roads
+            for entry in [(r, None)] + [(r, k) for k in range(n_lanes)]:
+                new_items.append(entry)
+                label = f"R{r + 1} {'Combined' if entry[1] is None else f'L{entry[1] + 1}'}"
+                new_labels.append(label)
+                if entry in prev_checked:
+                    check_flags.append(True)
+                elif newly_added and entry[1] is None:
+                    check_flags.append(True)   # default to combined for new road
+                else:
+                    check_flags.append(False)
+
+        self._lane_items = new_items
+        self._prev_multilane_roads = new_multilane_roads
+
+        self.lane_selector.selectionChanged.disconnect(self._refresh)
+        self.lane_selector.populate(new_labels, all_checked=False)
+        for i, ck in enumerate(check_flags):
+            if ck:
+                self.lane_selector.model().item(i).setCheckState(Qt.Checked)
+        self.lane_selector._update_display()
+        self.lane_selector.selectionChanged.connect(self._refresh)
+
+        has_entries = bool(new_items)
+        self._lane_label.setVisible(has_entries)
+        self.lane_selector.setVisible(has_entries)
+        self._refresh()
+
+    def _refresh(self, _checked=None):
+        if self._result is None:
+            return
+        road_idx = self.road_selector.checked_indices()
+        lane_idx = set(self.lane_selector.checked_indices())
+
+        selections: list = []
+        for r in road_idx:
+            n_lanes = self._lanes_per_road.get(r + 1, 0)
+            if n_lanes <= 1:
+                # Single-lane road: one line, always shown when ticked in box 1.
+                selections.append((r, None))
+            else:
+                for i, item in enumerate(self._lane_items):
+                    if i in lane_idx and item[0] == r:
+                        selections.append(item)
+
         self.ax.clear()
-        plot_network_density(self._result, ax=self.ax,
-                             road_ids=selected if selected else None)
+        plot_network_density(self._result, ax=self.ax, selections=selections)
         self.canvas.draw_idle()
 
 
