@@ -349,12 +349,15 @@ class CATab(QWidget):
         if road is None:
             return
 
-        # Read current α/β from the road's lanes.
+        # Read current α/β/length from the road's lanes.  Length lives on
+        # ``LaneSpec`` (RoadSpec has no length attribute), so we read it
+        # from the first lane — the click-to-edit dialog applies the same
+        # length to every lane on the road in _rebuild_spec.
         alpha = next((ln.alpha for ln in road.lanes if getattr(ln, "open_in", False)), 0.5)
         beta  = next((ln.beta  for ln in road.lanes if getattr(ln, "open_out", False)), 0.5)
         has_alpha = any(getattr(ln, "open_in",  False) for ln in road.lanes)
         has_beta  = any(getattr(ln, "open_out", False) for ln in road.lanes)
-        length = getattr(road, "length", 20)
+        length = road.lanes[0].length if road.lanes else 20
 
         dlg = RoadEditDialog(road_id, alpha, beta, length,
                              has_alpha, has_beta, parent=self)
