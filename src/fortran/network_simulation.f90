@@ -54,7 +54,7 @@ contains
 
         call snapshot_network(net)
         if (model_int /= LC_DISABLED) then
-            call apply_lane_changes(net, model_int, p_change_val)
+            call apply_lane_changes(net, model_int, p_change_val, v_max)
             call snapshot_network(net)   ! re-freeze with post-LC state
         end if
         call evaluate_junctions(net)

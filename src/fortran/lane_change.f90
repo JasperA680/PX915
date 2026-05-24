@@ -39,7 +39,6 @@ module lane_change_mod
 
     ! Backward look-ahead distance = V_MAX: a following car at maximum
     ! velocity needs at least L_BACK+1 clear cells to avoid a collision.
-    integer, parameter :: L_BACK = 5        ! This needs to be the same as V_MAX
 
     public :: apply_lane_changes
 
@@ -49,13 +48,13 @@ contains
     ! Apply one lane-change sub-step to every road in the network.
     ! Reads from lane%old (caller must have snapshotted), writes cells.
     !------------------------------------------------------------------
-    subroutine apply_lane_changes(net, lc_model, p_change)
+    subroutine apply_lane_changes(net, lc_model, p_change, v_max)
         type(road_network_t), intent(inout) :: net
-        integer, intent(in) :: lc_model
+        integer, intent(in) :: lc_model, v_max
         real,    intent(in) :: p_change
         integer :: r
         do r = 1, size(net%roads)
-            call road_lane_change(net%roads(r), lc_model, p_change)
+            call road_lane_change(net%roads(r), lc_model, p_change, v_max)
         end do
     end subroutine apply_lane_changes
 
@@ -64,15 +63,17 @@ contains
     ! Iterates over all lanes and positions (excluding site L).
     ! Uses old state for all gap queries; writes to cells.
     !------------------------------------------------------------------
-    subroutine road_lane_change(road, lc_model, p_change)
+    subroutine road_lane_change(road, lc_model, p_change, v_max)
         type(road_t), intent(inout) :: road
-        integer, intent(in) :: lc_model
+        integer, intent(in) :: lc_model, v_max
         real,    intent(in) :: p_change
 
         integer :: n_lanes, k, L, i, v, tgt
-        integer :: gf, go_fwd, go_back
+        integer :: gf, go_fwd, go_back, L_BACK
         logical :: t1, t2r, t3r, t2l, t3l, want_right, want_left
         real    :: rnd
+
+        L_BACK = v_max
 
         n_lanes = size(road%lane)
         if (n_lanes < 2) return
