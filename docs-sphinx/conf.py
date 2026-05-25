@@ -34,6 +34,7 @@ fortran_src = [
     "../src/fortran/ns_model.f90",
     "../src/fortran/junction.f90",
     "../src/fortran/network_builder.f90",
+    "../src/fortran/lane_change.f90",
 ]
 
 # Use NumPy-style Python docstrings
