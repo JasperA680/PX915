@@ -102,7 +102,8 @@ def main():
     # Default model is NS.
     assert win.ca_tab.model_combo.currentText() == "NS"
 
-    for preset in ("single_lane", "two_lane", "crossroads", "roundabout", "town"):
+    for preset in ("single_lane", "two_lane", "t_junction",
+                   "crossroads", "roundabout", "town"):
         run_one_preset(win, preset)
 
     # TASEP should be greyed out for non-single-lane presets.

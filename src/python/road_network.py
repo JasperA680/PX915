@@ -234,6 +234,64 @@ def two_lane(L: int = 50, alpha: float = 0.5, beta: float = 0.5) -> Tuple[Networ
     return spec, layout
 
 
+def t_junction(L: int = 20, alpha: float = 0.4, beta: float = 0.5,
+               p_through: float = 0.5) -> Tuple[NetworkSpec, LayoutSpec]:
+    """Simple 3-road T-junction.
+
+    R1 (W) and R2 (E) form the horizontal bar; R3 (S) is the stem coming up.
+    Each road has the usual bidirectional lane pair (inbound + outbound),
+    open at the external end.
+
+    Routing:
+      * From W or E: ``p_through`` continues straight across the bar,
+        ``1 − p_through`` turns onto the stem (S).
+      * From S: split 50/50 between W and E (no "straight" option).
+    """
+    p_turn = 1.0 - p_through
+    roads: List[RoadSpec] = []
+    for i in range(1, 4):
+        r = RoadSpec(id=i, end_junction=(1, 0), lanes=_bidir_lanes(L))
+        r.lanes[1].open_in  = True
+        r.lanes[1].alpha    = alpha
+        r.lanes[0].open_out = True
+        r.lanes[0].beta     = beta
+        roads.append(r)
+
+    # Perimeter ports — the Fortran asymmetric-junction yield code uses
+    # these to decide which route chords cross.  Going CW around the
+    # junction from "north" the order is R2 (E), R3 (S), R1 (W).  Each
+    # road occupies two consecutive ports (in then out).
+    perim_in  = {2: 0, 3: 2, 1: 4}
+    perim_out = {2: 1, 3: 3, 1: 5}
+    in_legs  = [JunctionLegSpec(i, _lane_inbound_at(roads[i - 1], 1),
+                                perim=perim_in[i])  for i in range(1, 4)]
+    out_legs = [JunctionLegSpec(i, _lane_outbound_at(roads[i - 1], 1),
+                                perim=perim_out[i]) for i in range(1, 4)]
+
+    # Road indexing: 1=W, 2=E, 3=S.  routes[r][c] = prob of arriving from
+    # leg r and exiting via leg c.  Same-road cells are U-turns → 0.
+    routes: List[List[float]] = [
+        [0.0,        p_through, p_turn],     # from W
+        [p_through,  0.0,       p_turn],     # from E
+        [0.5,        0.5,       0.0],        # from S (forced even split)
+    ]
+
+    junc = JunctionSpec(
+        id=1, n_in=3, n_out=3,
+        in_legs=in_legs, out_legs=out_legs, routes=routes,
+    )
+
+    layout = LayoutSpec(
+        junctions={1: (0.0, 0.0)},
+        road_endpoints={
+            1: ((0.0, 0.0), (-1.0, 0.0)),    # W
+            2: ((0.0, 0.0), ( 1.0, 0.0)),    # E
+            3: ((0.0, 0.0), ( 0.0, -1.0)),   # S (stem)
+        },
+    )
+    return NetworkSpec(roads=roads, junctions=[junc]), layout
+
+
 def crossroads(L: int = 20, alpha: float = 0.4, beta: float = 0.5,
                p_left: float = 0.25, p_right: float = 0.25) -> Tuple[NetworkSpec, LayoutSpec]:
     """4-way crossroad mirroring Fortran init_crossroad.
@@ -456,6 +514,7 @@ def town(L: int = 15, alpha: float = 0.35, beta: float = 0.5,
 PRESETS = {
     "single_lane": single_lane,
     "two_lane":    two_lane,
+    "t_junction":  t_junction,
     "crossroads":  crossroads,
     "roundabout":  roundabout,
     "town":        town,
