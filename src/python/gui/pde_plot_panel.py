@@ -1,7 +1,7 @@
 """Tabbed panel for LWR PDE plots.
 
-Five tabs:
-  Space-time, Snapshots, Boundary flow — populated for any result.
+Four tabs:
+  Space-time, Snapshots — populated for any result.
   Lane densities, Mass conservation — enabled only when n_lanes > 1.
 
 On multilane results the Space-time and Snapshots tabs each show a lane
@@ -22,7 +22,6 @@ from python.gui.plot_panel import _CanvasTab
 from python.pde_visualisation import (
     plot_pde_spacetime,
     plot_pde_snapshots,
-    plot_pde_flow,
     plot_lane_densities,
 )
 
@@ -107,18 +106,6 @@ class _SpacetimeTab(_CanvasTab):
             self.ax.set_title(f"Space-time density — Lane {lane_idx + 1}  (IC: {ic},  flux: {flux})")
         else:
             plot_pde_spacetime(self._data, ax=self.ax)
-        self.canvas.draw_idle()
-
-
-class _FlowTab(_CanvasTab):
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self._data: Optional[dict] = None
-
-    def set_data(self, data: dict):
-        self._data = data
-        _reset_axes(self)
-        plot_pde_flow(data, ax=self.ax)
         self.canvas.draw_idle()
 
 
@@ -274,14 +261,14 @@ class _MassTab(_CanvasTab):
 
 
 # Indices for multi-lane-only tabs (set in addTab order below).
-_MULTILANE_TAB_INDICES = (3, 4)
+_MULTILANE_TAB_INDICES = (2, 3)
 
 
 class PDEPlotPanel(QTabWidget):
-    """Five-tab plot panel for PDE simulation results.
+    """Four-tab plot panel for PDE simulation results.
 
-    Tab order: Space-time (0), Snapshots (1), Boundary flow (2),
-               Lane densities (3, multilane only), Mass conservation (4, multilane only).
+    Tab order: Space-time (0), Snapshots (1),
+               Lane densities (2, multilane only), Mass conservation (3, multilane only).
 
     Call ``show_result(data)`` with the dict returned by ``load_pde_netcdf``.
     """
@@ -290,12 +277,10 @@ class PDEPlotPanel(QTabWidget):
         super().__init__(parent)
         self.tab_spacetime = _SpacetimeTab()
         self.tab_snapshots = _SnapshotsTab()
-        self.tab_flow = _FlowTab()
         self.tab_lane_dens = _LaneDensitiesTab()
         self.tab_mass = _MassTab()
         self.addTab(self.tab_spacetime, "Space-time")
         self.addTab(self.tab_snapshots, "Snapshots")
-        self.addTab(self.tab_flow, "Boundary flow")
         self.addTab(self.tab_lane_dens, "Lane densities")
         self.addTab(self.tab_mass, "Mass conservation")
         for i in _MULTILANE_TAB_INDICES:
@@ -335,7 +320,6 @@ class PDEPlotPanel(QTabWidget):
     def show_result(self, data: dict):
         self.tab_spacetime.set_data(data)
         self.tab_snapshots.set_data(data)
-        self.tab_flow.set_data(data)
 
         multi = int(data.get("n_lanes", 1)) > 1
         self.set_multilane_enabled(multi)
