@@ -349,12 +349,15 @@ class CATab(QWidget):
         if road is None:
             return
 
-        # Read current α/β from the road's lanes.
+        # Read current α/β/length from the road's lanes.  Length lives on
+        # ``LaneSpec`` (RoadSpec has no length attribute), so we read it
+        # from the first lane — the click-to-edit dialog applies the same
+        # length to every lane on the road in _rebuild_spec.
         alpha = next((ln.alpha for ln in road.lanes if getattr(ln, "open_in", False)), 0.5)
         beta  = next((ln.beta  for ln in road.lanes if getattr(ln, "open_out", False)), 0.5)
         has_alpha = any(getattr(ln, "open_in",  False) for ln in road.lanes)
         has_beta  = any(getattr(ln, "open_out", False) for ln in road.lanes)
-        length = getattr(road, "length", 20)
+        length = road.lanes[0].length if road.lanes else 20
 
         dlg = RoadEditDialog(road_id, alpha, beta, length,
                              has_alpha, has_beta, parent=self)
@@ -376,7 +379,13 @@ class CATab(QWidget):
             self.log.emit(f"J{junction_id}: no routing matrix to edit")
             return
 
-        dlg = JunctionEditDialog(junction_id, j.routes, parent=self)
+        in_road_ids  = [int(leg.road) for leg in j.in_legs]
+        out_road_ids = [int(leg.road) for leg in j.out_legs]
+        dlg = JunctionEditDialog(
+            junction_id, j.routes,
+            in_road_ids=in_road_ids, out_road_ids=out_road_ids,
+            parent=self,
+        )
         if dlg.exec_() == JunctionEditDialog.Accepted:
             new_routes = dlg.routes()
             self._junction_overrides[junction_id] = new_routes

@@ -35,9 +35,29 @@ module tasep_model
     implicit none
     private
 
+    public :: initialise_lattice
     public :: tasep_step
+    public :: count_occupied
+    public :: compute_density
 
 contains
+
+    subroutine initialise_lattice(state, L)
+        ! Initialise an empty one-dimensional TASEP lattice.
+        !
+        ! This routine creates a road lattice of length ``L`` where all sites are
+        ! initially empty. The ``velocity`` field is also reset to zero for every
+        ! cell. In this TASEP implementation, the main dynamical variable is
+        ! whether a cell contains a car; the velocity field is retained for
+        ! compatibility with the wider road-network data structure.
+        integer, intent(in) :: L
+        ! Number of lattice sites.
+        type(cell), intent(out) :: state(L)
+        ! Output lattice state. On return, all sites are empty.
+
+        state%has_car = .false.
+        state%velocity = 0
+    end subroutine initialise_lattice
 
 
     subroutine tasep_step(state, L, alpha, beta, exit_count)
@@ -129,71 +149,47 @@ contains
     end subroutine tasep_step
 
 
+    function count_occupied(state, L) result(nocc)
+        ! Count the number of occupied sites in the lattice.
+        !
+        ! This routine returns:
+        !
+        ! .. math::
+        !
+        !    N = \sum_{i=1}^{L} \tau_i,
+        !
+        ! where ``tau_i = 1`` if site ``i`` contains a vehicle and ``tau_i = 0``
+        ! otherwise.
+        integer, intent(in) :: L
+        ! Number of lattice sites.
+        type(cell), intent(in) :: state(L)
+        ! Current lattice state.
+        integer :: nocc
+        ! Number of occupied sites.
+
+        nocc = count(state%has_car)
+    end function count_occupied
 
 
-    subroutine tasep_lane_step(net)
-        type(road_network_t), intent(inout) :: net
-        integer :: r, k, L, i_site
-        real    :: rnd
-        logical :: exit_now, junc_moved_L
-        type(cell), allocatable :: updated(:)
+    function compute_density(state, L) result(rho)
+        ! Compute the mean lattice density.
+        !
+        ! The density is the fraction of lattice sites that are occupied:
+        !
+        ! .. math::
+        !
+        !    \rho = \frac{N}{L}
+        !         = \frac{1}{L}\sum_{i=1}^{L} \tau_i.
+        !
+        ! Here ``tau_i`` is one for an occupied site and zero for an empty site.
+        integer, intent(in) :: L
+        ! Number of lattice sites.
+        type(cell), intent(in) :: state(L)
+        ! Current lattice state.
+        real :: rho
+        ! Mean density of the lattice.
 
-        do r = 1, size(net%roads)
-            do k = 1, size(net%roads(r)%lane)
-                L = net%roads(r)%lane(k)%length
-                allocate(updated(L))
-                updated = net%roads(r)%lane(k)%cells
-
-                junc_moved_L = (net%roads(r)%lane(k)%old(L)%has_car .and. &
-                                .not. net%roads(r)%lane(k)%cells(L)%has_car .and. &
-                                .not. net%roads(r)%lane(k)%open_out)
-
-                ! Clear positions occupied at step start.
-                do i_site = 1, L
-                    if (net%roads(r)%lane(k)%old(i_site)%has_car) then
-                        updated(i_site)%has_car  = .false.
-                        updated(i_site)%velocity = 0
-                    end if
-                end do
-
-                ! TASEP movement from old state.
-                do i_site = 1, L
-                    if (.not. net%roads(r)%lane(k)%old(i_site)%has_car) cycle
-                    if (i_site == L .and. junc_moved_L) cycle
-
-                    exit_now = .false.
-                    if (net%roads(r)%lane(k)%open_out .and. i_site == L) then
-                        call random_number(rnd)
-                        if (rnd < net%roads(r)%lane(k)%beta) exit_now = .true.
-                    end if
-                    if (exit_now) cycle
-
-                    if (i_site < L .and. .not. net%roads(r)%lane(k)%old(i_site+1)%has_car) then
-                        ! Hop right by one cell.
-                        updated(i_site+1)%has_car  = .true.
-                        updated(i_site+1)%velocity = 1
-                    else
-                        ! Blocked or holding cell: stay.
-                        updated(i_site)%has_car  = .true.
-                        updated(i_site)%velocity = 0
-                    end if
-                end do
-
-                ! Open inflow at site 1 (only if empty at step start).
-                if (net%roads(r)%lane(k)%open_in .and. &
-                    .not. net%roads(r)%lane(k)%old(1)%has_car .and. &
-                    .not. updated(1)%has_car) then
-                    call random_number(rnd)
-                    if (rnd < net%roads(r)%lane(k)%alpha) then
-                        updated(1)%has_car  = .true.
-                        updated(1)%velocity = 1
-                    end if
-                end if
-
-                net%roads(r)%lane(k)%cells = updated
-                deallocate(updated)
-            end do
-        end do
-    end subroutine tasep_lane_step
+        rho = real(count(state%has_car)) / real(L)
+    end function compute_density
 
 end module tasep_model

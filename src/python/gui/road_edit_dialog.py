@@ -71,41 +71,63 @@ class RoadEditDialog(QDialog):
 class JunctionEditDialog(QDialog):
     """Editor for a junction's routing matrix.
 
-    The matrix has ``n_in`` rows (one per inbound leg) and ``n_out`` columns
-    (one per outbound leg).  Each row should sum to 1.  We don't auto-enforce
-    that — the user can normalise via the "Normalise rows" button or just type
-    values that sum to 1.
+    Rows = inbound legs (one per inbound lane); columns = outbound legs.
+    Each header is labelled with the road number the leg attaches to (e.g.
+    ``from R3`` / ``→ R2``) so the user can match the matrix back to the
+    network preview.  Cells where the inbound and outbound legs share the
+    same road are U-turns — forced to 0 and read-only.  Each row should sum
+    to 1; click "Normalise rows" to make it so (locked cells are excluded).
     """
 
-    def __init__(self, junction_id: int, routes, parent=None):
+    def __init__(self, junction_id: int, routes,
+                 in_road_ids=None, out_road_ids=None, parent=None):
         super().__init__(parent)
         self.setWindowTitle(f"Edit Junction J{junction_id} routing")
         self.setMinimumWidth(360)
         self._n_in  = len(routes)
         self._n_out = len(routes[0]) if routes else 0
+        if in_road_ids is None:
+            in_road_ids = list(range(1, self._n_in + 1))
+        if out_road_ids is None:
+            out_road_ids = list(range(1, self._n_out + 1))
+        self._in_road_ids = list(in_road_ids)
+        self._out_road_ids = list(out_road_ids)
+        # locked_cells[(r, c)] = True when cell is a U-turn (same road).
+        self._locked = {
+            (r, c): (self._in_road_ids[r] == self._out_road_ids[c])
+            for r in range(self._n_in) for c in range(self._n_out)
+        }
         self._boxes: list = []   # [[spinbox, …], …] in row-major order
 
         info = QLabel(
             f"Routing matrix: {self._n_in} inbound × {self._n_out} outbound legs.\n"
-            "Each row is the probability of an incoming vehicle taking each\n"
-            "outbound leg.  Rows should sum to 1.0."
+            "Each row is the probability of an incoming vehicle exiting via\n"
+            "each outbound leg.  U-turns (same-road cells) are locked at 0.\n"
+            "Rows should sum to 1.0 across the editable cells."
         )
         info.setWordWrap(True)
 
-        grid_group = QGroupBox("Routes  (rows = incoming leg, cols = outgoing leg)")
+        grid_group = QGroupBox("Routes  (rows = arriving from, cols = leaving to)")
         grid = QGridLayout(grid_group)
-        # Column headers
+        # Top-left corner placeholder.
+        grid.addWidget(QLabel(""), 0, 0)
+        # Column headers — labelled by the road each outbound leg leads to.
         for c in range(self._n_out):
-            grid.addWidget(QLabel(f"→ out {c + 1}"), 0, c + 1)
+            grid.addWidget(QLabel(f"→ R{self._out_road_ids[c]}"), 0, c + 1)
         for r in range(self._n_in):
-            grid.addWidget(QLabel(f"in {r + 1}"), r + 1, 0)
+            grid.addWidget(QLabel(f"from R{self._in_road_ids[r]}"), r + 1, 0)
             row_boxes = []
             for c in range(self._n_out):
                 sb = QDoubleSpinBox()
                 sb.setRange(0.0, 1.0)
                 sb.setSingleStep(0.05)
                 sb.setDecimals(3)
-                sb.setValue(float(routes[r][c]))
+                if self._locked[(r, c)]:
+                    sb.setValue(0.0)
+                    sb.setEnabled(False)
+                    sb.setToolTip("U-turn (same road) — locked at 0")
+                else:
+                    sb.setValue(float(routes[r][c]))
                 grid.addWidget(sb, r + 1, c + 1)
                 row_boxes.append(sb)
             self._boxes.append(row_boxes)
@@ -117,7 +139,8 @@ class JunctionEditDialog(QDialog):
         normalise_btn.addButton(norm_pb, QDialogButtonBox.ActionRole)
 
         buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
-        buttons.accepted.connect(self.accept)
+        # OK auto-normalises so submitted rows are guaranteed to sum to 1.
+        buttons.accepted.connect(self._on_accept)
         buttons.rejected.connect(self.reject)
 
         outer = QVBoxLayout(self)
@@ -126,22 +149,34 @@ class JunctionEditDialog(QDialog):
         outer.addWidget(normalise_btn)
         outer.addWidget(buttons)
 
+    def _on_accept(self):
+        self._normalise()
+        self.accept()
+
     def _normalise(self):
-        for row in self._boxes:
-            total = sum(b.value() for b in row)
+        """Normalise each row so the editable cells sum to 1; locked cells stay 0."""
+        for r, row in enumerate(self._boxes):
+            editable = [(c, b) for c, b in enumerate(row) if not self._locked[(r, c)]]
+            if not editable:
+                continue
+            total = sum(b.value() for _, b in editable)
             if total <= 0:
-                # Set uniform 1/n distribution.
-                v = 1.0 / max(1, len(row))
-                for b in row:
-                    b.blockSignals(True)
-                    b.setValue(v)
-                    b.blockSignals(False)
+                v = 1.0 / len(editable)
+                for _, b in editable:
+                    b.blockSignals(True); b.setValue(v); b.blockSignals(False)
             else:
-                for b in row:
+                for _, b in editable:
                     b.blockSignals(True)
                     b.setValue(b.value() / total)
                     b.blockSignals(False)
 
     def routes(self) -> list:
-        """Return the edited routing matrix as a list of lists of floats."""
-        return [[float(b.value()) for b in row] for row in self._boxes]
+        """Return the edited routing matrix as a list of lists of floats.
+
+        Locked (U-turn) cells are always returned as 0.0.
+        """
+        out = []
+        for r, row in enumerate(self._boxes):
+            out.append([0.0 if self._locked[(r, c)] else float(b.value())
+                        for c, b in enumerate(row)])
+        return out

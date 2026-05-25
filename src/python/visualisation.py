@@ -392,14 +392,26 @@ def _result_lane_info(result, t):
     """Per-road list of lane info dicts: {flow_direction, colour}.
 
     flow_direction comes from ``result.config['roads'][*]['lanes']``.
-    colour is per-lane occupancy at timestep ``t`` (0–1), or ``None`` if
-    ``t is None`` (preview mode).
+
+    ``t`` accepts three forms:
+      * ``None`` → preview mode, colour=None.
+      * ``int t`` → single-timestep occupancy.
+      * ``(t0, t1)`` → mean occupancy over the inclusive range [t0, t1].
     """
     out = {}
     lane_road = np.asarray(result.lane_road_id)
     lane_len  = np.asarray(result.lane_length)
     fd_map = _config_road_flow_directions(result)
-    occ_t = result.occupancy[t] if t is not None else None
+
+    if t is None:
+        occ_slice = None
+    elif isinstance(t, tuple):
+        t0, t1 = int(t[0]), int(t[1])
+        if t0 > t1:
+            t0, t1 = t1, t0
+        occ_slice = result.occupancy[t0:t1 + 1].mean(axis=0)
+    else:
+        occ_slice = result.occupancy[int(t)]
 
     for rid in np.unique(lane_road):
         rid_int = int(rid)
@@ -408,9 +420,9 @@ def _result_lane_info(result, t):
         info_list = []
         for k, li in enumerate(lanes_of_r):
             fd = fds[k] if k < len(fds) else 1
-            if occ_t is not None:
+            if occ_slice is not None:
                 cells = int(lane_len[li])
-                occ = int(occ_t[li, :cells].sum())
+                occ = float(occ_slice[li, :cells].sum())
                 col = occ / max(1, cells)
             else:
                 col = None
@@ -444,22 +456,33 @@ def _result_open_endpoints(result):
     return out
 
 
-def plot_network_layout(result, ax=None, occupancy_t: Optional[int] = None,
+def plot_network_layout(result, ax=None, occupancy_t=None,
                         title: Optional[str] = None):
     """Draw a NetworkResult's network: roads, junctions, open boundaries.
 
     Each road is rendered as N parallel lines (one per lane) with directional
-    arrows.  If ``occupancy_t`` is given, each lane is shaded individually by
-    its own occupancy at that timestep.
+    arrows.  ``occupancy_t`` accepts:
+      * ``None`` → uniform colour (no overlay).
+      * ``int t`` → per-lane occupancy at timestep ``t``.
+      * ``(t0, t1)`` → per-lane *mean* occupancy across the inclusive range.
     """
     if ax is None:
         _, ax = plt.subplots(figsize=(7, 6))
     j_xy, r_ends = _config_layout(result)
+
+    if occupancy_t is None:
+        title_t = "—"
+    elif isinstance(occupancy_t, tuple):
+        a, b = sorted((int(occupancy_t[0]), int(occupancy_t[1])))
+        title_t = f"{a + 1}" if a == b else f"{a + 1}–{b + 1} (mean)"
+    else:
+        title_t = f"{int(occupancy_t) + 1}"
+
     return _draw_network(
         ax, road_endpoints=r_ends, junction_xy=j_xy,
         road_lane_info=_result_lane_info(result, occupancy_t),
         open_endpoints=_result_open_endpoints(result),
-        title=title or f'Network layout  (t={occupancy_t if occupancy_t is not None else "—"})',
+        title=title or f'Network layout  (t={title_t})',
     )
 
 
@@ -485,7 +508,9 @@ def plot_network_spec(spec, layout, ax=None, alpha_beta_labels: bool = False,
         if r.end_junction[1] == 0:
             open_eps.append((r.id, 2))
 
-    # Road labels: append α/β if requested and the road has open boundaries.
+    # Road labels: when alpha_beta_labels=True, show α/β (for open boundaries)
+    # and L (lane length).  Length is always shown since it's a per-road
+    # property regardless of whether the road has open boundaries.
     road_by_id = {r.id: r for r in spec.roads}
     def _label(rid):
         if not alpha_beta_labels:
@@ -493,8 +518,6 @@ def plot_network_spec(spec, layout, ax=None, alpha_beta_labels: bool = False,
         r = road_by_id[rid]
         a_set = any(ln.open_in for ln in r.lanes)
         b_set = any(ln.open_out for ln in r.lanes)
-        if not (a_set or b_set):
-            return f'R{rid}'
         bits = []
         if a_set:
             a = next(ln.alpha for ln in r.lanes if ln.open_in)
@@ -502,7 +525,9 @@ def plot_network_spec(spec, layout, ax=None, alpha_beta_labels: bool = False,
         if b_set:
             b = next(ln.beta for ln in r.lanes if ln.open_out)
             bits.append(f'β={b:.2f}')
-        return f'R{rid}\n' + ' '.join(bits)
+        if r.lanes:
+            bits.append(f'L={int(r.lanes[0].length)}')
+        return f'R{rid}\n' + ' '.join(bits) if bits else f'R{rid}'
 
     # Junction annotations: show routing summary for every junction with
     # 4-way routes (crossroads and town).  Visibility is zoom-controlled so
@@ -526,13 +551,19 @@ def plot_network_spec(spec, layout, ax=None, alpha_beta_labels: bool = False,
     )
 
 
-def plot_network_density(result, ax=None, title=None, road_ids=None):
-    """Per-road density vs time.  One line per road.
+def plot_network_density(result, ax=None, title=None, selections=None,
+                         road_ids=None, lane_index: Optional[int] = None):
+    """Density ρ(t) overlay for any combination of (road, lane) traces.
 
     Parameters
     ----------
-    road_ids : list[int] | None
-        0-based road indices to plot.  ``None`` plots all roads.
+    selections : list[tuple[int, int | None]] | None
+        Iterable of ``(road_idx_0based, lane_idx_or_None)`` pairs.  Each pair
+        becomes one line: ``lane_idx=None`` plots the road-level density,
+        ``lane_idx=k`` plots the k-th lane of that road.  ``None`` falls
+        back to ``road_ids`` / ``lane_index`` (back-compat).
+    road_ids, lane_index :
+        Legacy single-selection API.  ``road_ids=None`` → all roads.
     """
     if ax is None:
         fig, ax = plt.subplots(figsize=(9, 4))
@@ -540,15 +571,42 @@ def plot_network_density(result, ax=None, title=None, road_ids=None):
         fig = ax.figure
     n_steps, n_roads = result.road_density.shape
     t = np.arange(1, n_steps + 1)
-    indices = road_ids if road_ids is not None else list(range(n_roads))
-    for r in indices:
-        ax.plot(t, result.road_density[:, r], label=f'R{r + 1}', linewidth=1.0)
+
+    # Build a unified list of (road_idx_0based, lane_idx_or_None) traces.
+    if selections is None:
+        if road_ids is None:
+            selections = [(r, lane_index) for r in range(n_roads)]
+        else:
+            selections = [(r, lane_index) for r in road_ids]
+
+    lane_road = np.asarray(result.lane_road_id)
+    lane_len  = np.asarray(result.lane_length)
+    drawn_any_lane = False
+
+    for r, li in selections:
+        if li is None:
+            ax.plot(t, result.road_density[:, r], label=f'R{r + 1}', linewidth=1.0)
+        else:
+            lane_idxs = np.where(lane_road == (r + 1))[0]
+            if li >= len(lane_idxs):
+                continue
+            global_li = lane_idxs[int(li)]
+            Lk = int(lane_len[global_li])
+            if Lk <= 0:
+                continue
+            density_t = result.occupancy[:, global_li, :Lk].sum(axis=1) / Lk
+            ax.plot(t, density_t,
+                    label=f'R{r + 1} L{li + 1}', linewidth=1.0)
+            drawn_any_lane = True
+
     ax.set_xlabel('Time step')
     ax.set_ylabel('Density ρ')
     ax.set_ylim(0, 1)
-    ax.set_title(title or 'Per-road density vs time')
-    n_shown = len(indices)
-    if n_shown <= 12:
+    if title is None:
+        title = 'Per-lane density vs time' if drawn_any_lane else 'Per-road density vs time'
+    ax.set_title(title)
+    n_shown = len(selections)
+    if 0 < n_shown <= 12:
         ax.legend(fontsize=8, ncol=min(4, n_shown), loc='upper right')
     return fig, ax
 
