@@ -43,7 +43,8 @@ module junction_mod
     use road_network_mod
 
     implicit none
-    private
+    private :: evaluate_one_junction, paths_conflict_sym, build_yield_matrix_v2, &
+    build_yield_matrix_asym, chords_cross, in_arc, approve_pass, resolve_deadlocks
 
     public :: evaluate_junctions, move_category
 
