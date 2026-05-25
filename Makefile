@@ -63,7 +63,12 @@ PDE_VLIMIT ?= 1.0
 PDE_OUT    ?= data/output/pde_simulation.nc
 
 # Default target: build all executables
-all: run_network $(PDE_EXE)
+all: run_network pde
+
+# Build PDE solver
+$(PDE_EXE): $(PDE_FLUX_SRC) $(PDE_LC_SRC) $(PDE_MOD_SRC) $(PDE_DRV_SRC)
+	mkdir -p $(BUILD_DIR)
+	$(FC) $(FFLAGS) $^ -o $@ $(NC_FLIBS)
 
 pde: $(PDE_EXE)
 
