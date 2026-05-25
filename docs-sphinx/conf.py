@@ -3,8 +3,10 @@
 import os
 import sys
 
-# Let Sphinx import Python modules from src/python
+# Let Sphinx import Python modules from src/python (bare names) and
+# from src/ (for modules that use the python.* package prefix internally).
 sys.path.insert(0, os.path.abspath("../src/python"))
+sys.path.insert(0, os.path.abspath("../src"))
 
 # -- Project information -----------------------------------------------------
 
