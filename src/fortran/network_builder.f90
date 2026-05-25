@@ -34,7 +34,7 @@ module network_builder_mod
     implicit none
     private
 
-    type, public :: lane_spec_t
+    type :: lane_spec_t
         ! Specification for a single lane in a road.
         !
         ! This type stores the lane length, flow direction and open-boundary
@@ -55,7 +55,7 @@ module network_builder_mod
     end type lane_spec_t
 
 
-    type, public :: road_spec_t
+    type :: road_spec_t
         ! Specification for a road and its lanes.
         !
         ! A road connects two junctions and owns one or more lane specifications.
@@ -71,7 +71,7 @@ module network_builder_mod
     end type road_spec_t
 
 
-    type, public :: route_row_t
+    type :: route_row_t
         ! Route-probability row for one inbound junction leg.
         !
         ! The probability array has length ``n_out`` and stores the probabilities
@@ -82,7 +82,7 @@ module network_builder_mod
     end type route_row_t
 
 
-    type, public :: leg_spec_t
+    type :: leg_spec_t
         ! Specification for one inbound or outbound junction leg.
         !
         ! A leg identifies a road-lane pair connected to a junction. The optional
@@ -99,7 +99,7 @@ module network_builder_mod
     end type leg_spec_t
 
 
-    type, public :: junc_spec_t
+    type :: junc_spec_t
         ! Specification for one junction.
         !
         ! This type stores the flat inbound and outbound leg tables and the route
@@ -120,7 +120,7 @@ module network_builder_mod
     end type junc_spec_t
 
 
-    type, public :: network_spec_t
+    type :: network_spec_t
         ! Complete flat specification for a road network.
         !
         ! This type is the main input to ``build_network``. It contains all road
@@ -133,6 +133,13 @@ module network_builder_mod
         ! Junction specifications.
     end type network_spec_t
 
+
+    public :: lane_spec_t
+    public :: road_spec_t
+    public :: route_row_t
+    public :: leg_spec_t
+    public :: junc_spec_t
+    public :: network_spec_t
     public :: build_network, free_spec
 
 contains

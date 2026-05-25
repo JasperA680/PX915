@@ -45,16 +45,6 @@ behaviour.
 
 
 
-Cellular automata simulation module
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-The ``simulation`` module contains higher-level routines for running
-one-dimensional cellular automaton simulations. It provides simulation drivers,
-time-history output, steady-state measurement routines, and an optional
-Nagel-Schreckenberg update rule.
-
-.. f:autosrcfile:: simulation.f90
-
 Road-network models
 -------------------
 
@@ -67,6 +57,37 @@ stochastic deadlock resolution.
 
 .. f:autosrcfile:: junction.f90
 
+Road network module
+~~~~~~~~~~~~~~~~~~~
+
+The ``road_network_mod`` module defines the core data types for the
+road-network model, including the cell, lane, road, junction and network
+container types. It also provides utility routines for snapshotting lane state
+and counting occupied cells across the network.
+
+.. f:autosrcfile:: road_network.f90
+
+
+Vehicle module
+~~~~~~~~~~~~~~
+
+The ``vehicle_mod`` module defines the occupancy constants ``V_EMPTY`` and
+``V_OCCUPIED`` used by the junction holding-cell detection logic, and provides
+a simple occupancy predicate.
+
+.. f:autosrcfile:: vehicle.f90
+
+
+Network initialisation module
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The ``network_init_mod`` module provides hard-coded initialisers for canonical
+road-network topologies, including a four-arm crossroad and a T-junction. It
+also supplies a general lane allocator and a network deallocator.
+
+.. f:autosrcfile:: network_init.f90
+
+
 Network builder module
 ~~~~~~~~~~~~~~~~~~~~~~
 
@@ -74,6 +95,41 @@ The ``network_builder_mod`` module converts a flat network specification into a
 fully allocated road-network object ready for simulation.
 
 .. f:autosrcfile:: network_builder.f90
+
+
+Network simulation module
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The ``network_simulation_mod`` module provides the top-level driver for a
+single network timestep. It orchestrates the full parallel update sequence:
+network snapshot, optional lane-changing sub-step, junction evaluation, and
+per-lane cellular automaton update using either the TASEP or
+Nagel-Schreckenberg rule.
+
+.. f:autosrcfile:: network_simulation.f90
+
+
+Network I/O module
+~~~~~~~~~~~~~~~~~~
+
+The ``network_io_mod`` module writes the full network simulation output to a
+NetCDF file. The output includes per-step occupancy and velocity histories,
+per-lane and per-road metadata, flattened junction tables, and global
+simulation attributes.
+
+.. f:autosrcfile:: network_io.f90
+
+
+Network driver program
+~~~~~~~~~~~~~~~~~~~~~~
+
+The ``run_network`` program is the executable entry point for the road-network
+simulator. It reads a configuration file, builds the network, seeds the random
+number generator deterministically, runs the simulation loop, and writes the
+result to a NetCDF file.
+
+.. f:autosrcfile:: run_network.f90
+
 
 Continuum PDE models
 --------------------
