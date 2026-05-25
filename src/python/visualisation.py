@@ -392,14 +392,26 @@ def _result_lane_info(result, t):
     """Per-road list of lane info dicts: {flow_direction, colour}.
 
     flow_direction comes from ``result.config['roads'][*]['lanes']``.
-    colour is per-lane occupancy at timestep ``t`` (0–1), or ``None`` if
-    ``t is None`` (preview mode).
+
+    ``t`` accepts three forms:
+      * ``None`` → preview mode, colour=None.
+      * ``int t`` → single-timestep occupancy.
+      * ``(t0, t1)`` → mean occupancy over the inclusive range [t0, t1].
     """
     out = {}
     lane_road = np.asarray(result.lane_road_id)
     lane_len  = np.asarray(result.lane_length)
     fd_map = _config_road_flow_directions(result)
-    occ_t = result.occupancy[t] if t is not None else None
+
+    if t is None:
+        occ_slice = None
+    elif isinstance(t, tuple):
+        t0, t1 = int(t[0]), int(t[1])
+        if t0 > t1:
+            t0, t1 = t1, t0
+        occ_slice = result.occupancy[t0:t1 + 1].mean(axis=0)
+    else:
+        occ_slice = result.occupancy[int(t)]
 
     for rid in np.unique(lane_road):
         rid_int = int(rid)
@@ -408,9 +420,9 @@ def _result_lane_info(result, t):
         info_list = []
         for k, li in enumerate(lanes_of_r):
             fd = fds[k] if k < len(fds) else 1
-            if occ_t is not None:
+            if occ_slice is not None:
                 cells = int(lane_len[li])
-                occ = int(occ_t[li, :cells].sum())
+                occ = float(occ_slice[li, :cells].sum())
                 col = occ / max(1, cells)
             else:
                 col = None
@@ -444,22 +456,33 @@ def _result_open_endpoints(result):
     return out
 
 
-def plot_network_layout(result, ax=None, occupancy_t: Optional[int] = None,
+def plot_network_layout(result, ax=None, occupancy_t=None,
                         title: Optional[str] = None):
     """Draw a NetworkResult's network: roads, junctions, open boundaries.
 
     Each road is rendered as N parallel lines (one per lane) with directional
-    arrows.  If ``occupancy_t`` is given, each lane is shaded individually by
-    its own occupancy at that timestep.
+    arrows.  ``occupancy_t`` accepts:
+      * ``None`` → uniform colour (no overlay).
+      * ``int t`` → per-lane occupancy at timestep ``t``.
+      * ``(t0, t1)`` → per-lane *mean* occupancy across the inclusive range.
     """
     if ax is None:
         _, ax = plt.subplots(figsize=(7, 6))
     j_xy, r_ends = _config_layout(result)
+
+    if occupancy_t is None:
+        title_t = "—"
+    elif isinstance(occupancy_t, tuple):
+        a, b = sorted((int(occupancy_t[0]), int(occupancy_t[1])))
+        title_t = f"{a + 1}" if a == b else f"{a + 1}–{b + 1} (mean)"
+    else:
+        title_t = f"{int(occupancy_t) + 1}"
+
     return _draw_network(
         ax, road_endpoints=r_ends, junction_xy=j_xy,
         road_lane_info=_result_lane_info(result, occupancy_t),
         open_endpoints=_result_open_endpoints(result),
-        title=title or f'Network layout  (t={occupancy_t if occupancy_t is not None else "—"})',
+        title=title or f'Network layout  (t={title_t})',
     )
 
 

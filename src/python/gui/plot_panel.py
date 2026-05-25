@@ -7,8 +7,8 @@ from typing import Optional
 from PyQt5.QtCore import Qt, pyqtSignal, QEvent
 from PyQt5.QtGui import QStandardItem, QStandardItemModel
 from PyQt5.QtWidgets import (
-    QTabWidget, QWidget, QVBoxLayout, QHBoxLayout,
-    QComboBox, QSlider, QLabel, QListView, QFrame,
+    QTabWidget, QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
+    QComboBox, QSlider, QSpinBox, QLabel, QListView, QFrame,
 )
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg
 from matplotlib.figure import Figure
@@ -383,36 +383,89 @@ class _SpacetimeTab(_CanvasTab):
 # ---------------------------------------------------------------------------
 
 class _HeatmapTab(_CanvasTab):
+    """Network occupancy heatmap, averaged over a timestep range [From, To].
+
+    Defaults to averaging across the entire run.  The two integer boxes are
+    1-indexed externally (so 'From=1, To=2000' is "all of a 2000-step run");
+    we subtract 1 internally to match occupancy's 0-based axis.
+    """
+
     def __init__(self, parent=None):
         super().__init__(parent)
         row = QHBoxLayout()
-        row.addWidget(QLabel("Timestep:"))
-        self.slider = QSlider(Qt.Horizontal)
-        self.slider.setMinimum(0)
-        self.slider.setMaximum(0)
-        self.label = QLabel("0")
-        self.slider.valueChanged.connect(self._on_slide)
-        row.addWidget(self.slider)
-        row.addWidget(self.label)
+        row.setContentsMargins(4, 0, 4, 2)
+        row.addWidget(QLabel("Average from step"))
+        self.box_from = QSpinBox()
+        self.box_from.setMinimum(1)
+        self.box_from.setMaximum(1)
+        self.box_from.setValue(1)
+        self.box_from.setFixedWidth(80)
+        row.addWidget(self.box_from)
+        row.addWidget(QLabel("to"))
+        self.box_to = QSpinBox()
+        self.box_to.setMinimum(1)
+        self.box_to.setMaximum(1)
+        self.box_to.setValue(1)
+        self.box_to.setFixedWidth(80)
+        row.addWidget(self.box_to)
+        row.addStretch(1)
         self._layout.insertLayout(0, row)
         self._result: Optional[NetworkResult] = None
 
+        tip = (
+            "Heatmap averages per-lane occupancy across the inclusive range "
+            "[From, To] (1-indexed timesteps).  Default is the whole run; "
+            "set From == To for a single-frame view."
+        )
+        self.box_from.setToolTip(tip)
+        self.box_to.setToolTip(tip)
+
+        self.box_from.valueChanged.connect(self._on_from_changed)
+        self.box_to.valueChanged.connect(self._on_to_changed)
+
     def set_result(self, result: NetworkResult):
         self._result = result
-        self.slider.blockSignals(True)
-        self.slider.setMinimum(0)
-        self.slider.setMaximum(max(0, result.occupancy.shape[0] - 1))
-        self.slider.setValue(result.occupancy.shape[0] - 1)
-        self.slider.blockSignals(False)
-        self._on_slide(self.slider.value())
+        n_steps = max(1, result.occupancy.shape[0])
+        for box in (self.box_from, self.box_to):
+            box.blockSignals(True)
+            box.setMinimum(1)
+            box.setMaximum(n_steps)
+            box.blockSignals(False)
+        # Default: average across the entire run.
+        self.box_from.blockSignals(True)
+        self.box_to.blockSignals(True)
+        self.box_from.setValue(1)
+        self.box_to.setValue(n_steps)
+        self.box_from.blockSignals(False)
+        self.box_to.blockSignals(False)
+        self._redraw()
 
-    def _on_slide(self, value: int):
+    def _on_from_changed(self, v: int):
+        # Keep From ≤ To by clamping From (the box the user is editing).
+        cap = self.box_to.value()
+        if v > cap:
+            self.box_from.blockSignals(True)
+            self.box_from.setValue(cap)
+            self.box_from.blockSignals(False)
+        self._redraw()
+
+    def _on_to_changed(self, v: int):
+        floor_ = self.box_from.value()
+        if v < floor_:
+            self.box_to.blockSignals(True)
+            self.box_to.setValue(floor_)
+            self.box_to.blockSignals(False)
+        self._redraw()
+
+    def _redraw(self):
         if self._result is None:
             return
-        self.label.setText(str(value + 1))
+        t0 = self.box_from.value() - 1   # 1-indexed → 0-indexed
+        t1 = self.box_to.value()   - 1
         self.figure.clear()
         self.ax = self.figure.add_subplot(111)
-        plot_network_layout(self._result, ax=self.ax, occupancy_t=value)
+        occupancy_t = t0 if t0 == t1 else (t0, t1)
+        plot_network_layout(self._result, ax=self.ax, occupancy_t=occupancy_t)
         self.canvas.draw_idle()
 
 
