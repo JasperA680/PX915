@@ -140,6 +140,19 @@ class PDEParamForm(QWidget):
             "Also affects the CFL timestep and total time T."
         )
 
+        self.v_limit = QDoubleSpinBox()
+        self.v_limit.setRange(0.001, _BIG_FLOAT)
+        self.v_limit.setSingleStep(0.05)
+        self.v_limit.setValue(1.0)
+        self.v_limit.setDecimals(3)
+        self.v_limit.setToolTip(
+            "v_limit: Speed-restriction cap applied on top of the Greenshields model.\n"
+            "  v(ρ) = min(v_max × (1 − ρ/ρ_max), v_limit)\n"
+            "Setting v_limit < v_max simulates an enforced speed limit — in the\n"
+            "free-flow region traffic is capped at v_limit instead of rising to v_max.\n"
+            "Set v_limit = v_max (the default) for no restriction."
+        )
+
         self.rho_max = QDoubleSpinBox()
         self.rho_max.setRange(0.001, _BIG_FLOAT)
         self.rho_max.setSingleStep(0.05)
@@ -200,6 +213,7 @@ class PDEParamForm(QWidget):
         )
 
         mform.addRow("Free-flow speed v_max", self.v_max)
+        mform.addRow("Speed limit v_limit", self.v_limit)
         mform.addRow("Max density ρ_max", self.rho_max)
         mform.addRow("Initial condition", self.ic_type)
         mform.addRow("Flux scheme", self.flux_type)
@@ -264,7 +278,7 @@ class PDEParamForm(QWidget):
         self.M.valueChanged.connect(self._on_grid_changed)
         self.v_max.valueChanged.connect(self._on_grid_changed)
 
-        for w in (self.rho_max, self.rho_left_bc, self.rho_right_bc,
+        for w in (self.v_limit, self.rho_max, self.rho_left_bc, self.rho_right_bc,
                   self.n_lanes, self.lane_change_rate):
             w.valueChanged.connect(self.params_changed.emit)
         for w in (self.ic_type, self.flux_type, self.bc_type):
@@ -336,9 +350,13 @@ class PDEParamForm(QWidget):
             v_max_lanes=None, rho_max_lanes=None,
         )
         merged = {**defaults, **preset}
+        # v_limit defaults to v_max when the preset doesn't override (= no
+        # speed restriction).  Lets presets stay untouched while still
+        # producing the right number when the form is queried.
+        merged.setdefault("v_limit", merged["v_max"])
 
         widgets = [self.M, self.n_steps, self.t_max,
-                   self.v_max, self.rho_max,
+                   self.v_max, self.v_limit, self.rho_max,
                    self.rho_left_bc, self.rho_right_bc,
                    self.n_lanes, self.lane_change_rate,
                    self.ic_type, self.flux_type, self.bc_type,
@@ -349,6 +367,7 @@ class PDEParamForm(QWidget):
             self.M.setValue(int(merged["M"]))
             self.n_steps.setValue(int(merged["n_steps"]))
             self.v_max.setValue(float(merged["v_max"]))
+            self.v_limit.setValue(float(merged["v_limit"]))
             self.rho_max.setValue(float(merged["rho_max"]))
             self.rho_left_bc.setValue(float(merged["rho_left_bc"]))
             self.rho_right_bc.setValue(float(merged["rho_right_bc"]))
@@ -383,6 +402,7 @@ class PDEParamForm(QWidget):
             M=int(self.M.value()),
             n_steps=int(self.n_steps.value()),
             v_max=float(self.v_max.value()),
+            v_limit=float(self.v_limit.value()),
             rho_max=float(self.rho_max.value()),
             rho_left_bc=float(self.rho_left_bc.value()),
             rho_right_bc=float(self.rho_right_bc.value()),
