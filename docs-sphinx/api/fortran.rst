@@ -57,6 +57,14 @@ stochastic deadlock resolution.
 
 .. f:autosrcfile:: junction.f90
 
+Network builder module
+~~~~~~~~~~~~~~~~~~~~~~
+
+The ``network_builder_mod`` module converts a flat network specification into a
+fully allocated road-network object ready for simulation.
+
+.. f:autosrcfile:: network_builder.f90
+
 Continuum PDE models
 --------------------
 
