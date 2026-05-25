@@ -1,19 +1,19 @@
 """Launcher that runs the Fortran network driver from a Python NetworkSpec.
 
-Writes a JSON config, invokes ./build/run_network, parses the 'step k/n'
+Writes a NetCDF config, invokes ./build/run_network, parses the 'step k/n'
 lines on stdout to drive a progress callback, and returns the NC path.
 """
 
 from __future__ import annotations
 
-import json
 import os
 import re
 import subprocess
 from pathlib import Path
-from typing import Callable, Optional, Tuple
+from typing import Callable, Optional
 
-from python.road_network import NetworkSpec, SimParams, LayoutSpec, spec_to_dict, validate
+from python.road_network import NetworkSpec, SimParams, LayoutSpec, validate
+from python.io import write_config_netcdf
 
 
 _STEP_RE = re.compile(r"^step (\d+)/(\d+)\s*$")
@@ -26,7 +26,7 @@ def run_simulation(
     output_dir: os.PathLike,
     binary: os.PathLike = "./build/run_network",
     progress: Optional[Callable[[float, str], None]] = None,
-    config_name: str = "config.json",
+    config_name: str = "config.nc",
     output_name: str = "result.nc",
 ) -> Path:
     """Run the Fortran simulator and return the output NetCDF path.
@@ -40,8 +40,7 @@ def run_simulation(
     cfg_path = output_dir / config_name
     nc_path  = output_dir / output_name
 
-    with cfg_path.open("w") as f:
-        json.dump(spec_to_dict(spec, params, layout), f, sort_keys=True, indent=2)
+    write_config_netcdf(spec, params, layout, cfg_path)
 
     proc = subprocess.Popen(
         [str(binary), str(cfg_path), str(nc_path)],
@@ -83,10 +82,6 @@ def write_config(
     layout: LayoutSpec,
     path: os.PathLike,
 ) -> Path:
-    """Serialise a spec + params + layout to a JSON config file."""
+    """Serialise a spec + params + layout to a NetCDF config file."""
     validate(spec)
-    p = Path(path)
-    p.parent.mkdir(parents=True, exist_ok=True)
-    with p.open("w") as f:
-        json.dump(spec_to_dict(spec, params, layout), f, sort_keys=True, indent=2)
-    return p
+    return write_config_netcdf(spec, params, layout, path)

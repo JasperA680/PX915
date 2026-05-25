@@ -64,8 +64,16 @@ def run_one_preset(win: MainWindow, preset: str):
 
     assert state["err"] is None, f"{preset}: runner error: {state['err']}"
     assert state["ok"], f"{preset}: did not finish OK"
+    # Density tab defaults to nothing selected (user must pick which roads /
+    # lanes to display) — tick every road so the plot draws something we
+    # can validate.
+    from PyQt5.QtCore import Qt
+    rs = tab.plot_panel.tab_density.road_selector
+    for i in range(rs.count()):
+        rs.model().item(i).setCheckState(Qt.Checked)
+    rs.selectionChanged.emit(rs.checked_indices())
     assert len(tab.plot_panel.tab_density.ax.lines) > 0, \
-        f"{preset}: density tab has no lines"
+        f"{preset}: density tab has no lines after ticking all roads"
     print(f"  PASS: {state['path']}")
 
 
@@ -116,9 +124,9 @@ def main():
         "model should auto-switch to NS when TASEP is disabled"
     print("--- TASEP grey-out: PASS ---")
 
-    # TASEP path should be rejected by the Fortran driver (use single_lane
-    # so TASEP is still enabled in the combo).
-    print("--- TASEP rejection ---")
+    # TASEP is now implemented Fortran-side; check that single_lane + TASEP
+    # actually completes (this used to assert an error).
+    print("--- TASEP single_lane ---")
     win.ca_tab.preset_combo.setCurrentText("single_lane")
     win.ca_tab.model_combo.setCurrentText("TASEP")
     win.ca_tab.param_form.n_steps.setValue(50)
@@ -139,10 +147,9 @@ def main():
     win.ca_tab._runner.finished_error.connect(on_err)
     loop.exec_()
 
-    assert state["err"] is not None, "TASEP run should have errored"
-    assert "TASEP" in state["err"] or "not yet implemented" in state["err"], \
-        f"unexpected error message: {state['err']!r}"
-    print(f"  PASS: {state['err']}")
+    assert state["err"] is None, f"TASEP single_lane run failed: {state['err']}"
+    assert state["ok"], "TASEP single_lane did not finish OK"
+    print(f"  PASS: TASEP single_lane completed")
 
     print("ALL OK")
 

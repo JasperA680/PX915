@@ -184,13 +184,18 @@ class _DensityTab(_CanvasTab):
         self.lane_selector.selectionChanged.disconnect(self._refresh)
         self.road_selector.populate(road_labels, all_checked=False)
         self.lane_selector.populate([], all_checked=False)
+        # Tick R1 by default so the panel is never blank on first paint.
+        if n_roads > 0:
+            self.road_selector.model().item(0).setCheckState(Qt.Checked)
+            self.road_selector._update_display()
         self.road_selector.selectionChanged.connect(self._on_roads_changed)
         self.lane_selector.selectionChanged.connect(self._refresh)
 
-        # Box 2 starts hidden (nothing in box 1 yet).
+        # Box 2 starts hidden until a multi-lane road is ticked.
         self._lane_label.setVisible(False)
         self.lane_selector.setVisible(False)
-        self._refresh()
+        # _on_roads_changed builds box-2 contents from box-1 + refreshes the plot.
+        self._on_roads_changed()
 
     def _on_roads_changed(self, _checked=None):
         """Rebuild box 2 from the current box-1 selection, then refresh."""

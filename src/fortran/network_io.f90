@@ -27,8 +27,7 @@ contains
 
     subroutine write_network_netcdf(filename, net, occupancy, velocity, &
                                      road_density, road_entries, road_exits, &
-                                     n_steps, rng_seed, v_max, p_slow, dt, &
-                                     config_json)
+                                     n_steps, rng_seed, v_max, p_slow, dt)
         character(len=*),     intent(in) :: filename
         type(road_network_t), intent(in) :: net
         integer(kind=1),      intent(in) :: occupancy(:,:,:)   ! (cell, lane_index, time)
@@ -38,7 +37,6 @@ contains
         integer,              intent(in) :: road_exits(:,:)
         integer,              intent(in) :: n_steps, rng_seed, v_max
         real,                 intent(in) :: p_slow, dt
-        character(len=*),     intent(in) :: config_json
 
         integer :: ncid
         integer :: dim_cell, dim_lane, dim_time, dim_road, dim_junc, dim_pair
@@ -175,7 +173,6 @@ contains
         call check( nf90_put_att(ncid, NF90_GLOBAL, 'p_slow',         p_slow) )
         call check( nf90_put_att(ncid, NF90_GLOBAL, 'rng_seed',       rng_seed) )
         call check( nf90_put_att(ncid, NF90_GLOBAL, 'created_at',     trim(created_at)) )
-        call check( nf90_put_att(ncid, NF90_GLOBAL, 'config_json',    config_json) )
 
         ! Vars: history
         call check( nf90_def_var(ncid, 'occupancy', NF90_BYTE, [dim_cell, dim_lane, dim_time], var_occ) )

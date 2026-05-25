@@ -19,7 +19,7 @@ program run_network
     use network_init_mod,         only: free_network
     use network_simulation_mod,   only: network_step
     use network_builder_mod
-    use json_config_mod
+    use nc_config_mod
     use network_io_mod
     implicit none
 
@@ -35,7 +35,6 @@ program run_network
     real,            allocatable :: road_density(:,:)
     integer,         allocatable :: road_entries(:,:), road_exits(:,:)
     integer,         allocatable :: lane_road_offset(:)
-    character(len=:), allocatable :: config_json
     integer, allocatable :: seed_arr(:)
     integer :: seed_size
 
@@ -54,9 +53,8 @@ program run_network
     write(*,'(a,a)') "config: ", trim(config_path)
     write(*,'(a,a)') "output: ", trim(out_path)
 
-    ! Read config and also retain the raw JSON text for the NC attribute.
+    ! Read config (NetCDF — see python.io.write_config_netcdf for the schema).
     call read_config(trim(config_path), spec, params)
-    call load_text_file(trim(config_path), config_json)
 
     n_steps = params%n_steps
 
@@ -159,7 +157,7 @@ program run_network
     call write_network_netcdf(trim(out_path), net, occupancy, velocity, &
                               road_density, road_entries, road_exits, &
                               n_steps, params%rng_seed, params%v_max, &
-                              params%p_slow, params%dt, config_json)
+                              params%p_slow, params%dt)
 
     write(*,'(a,a)') "wrote: ", trim(out_path)
 

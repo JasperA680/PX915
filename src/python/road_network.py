@@ -18,7 +18,7 @@ can re-render the diagram on load.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field, asdict
+from dataclasses import dataclass, field
 from typing import Dict, List, Tuple
 
 
@@ -161,40 +161,6 @@ def validate(spec: NetworkSpec) -> None:
             raise ValueError(f"junction {j.id}: perim values must be all-or-none")
         if all_set and len(set(perims)) != len(perims):
             raise ValueError(f"junction {j.id}: perim values must be distinct")
-
-
-def spec_to_dict(spec: NetworkSpec, params: SimParams, layout: LayoutSpec) -> dict:
-    """Serialise spec + params + layout to a JSON-ready dict."""
-    return {
-        "schema_version": 1,
-        "params": asdict(params),
-        "roads": [
-            {
-                "id": r.id,
-                "end_junction": list(r.end_junction),
-                "lanes": [asdict(ln) for ln in r.lanes],
-            }
-            for r in spec.roads
-        ],
-        "junctions": [
-            {
-                "id": j.id,
-                "n_in": j.n_in,
-                "n_out": j.n_out,
-                "in_legs":  [asdict(leg) for leg in j.in_legs],
-                "out_legs": [asdict(leg) for leg in j.out_legs],
-                "routes":   [{"in_leg": k, "prob": list(row)}
-                             for k, row in enumerate(j.routes, start=1)],
-            }
-            for j in spec.junctions
-        ],
-        "layout": {
-            "junctions": [{"id": jid, "x": x, "y": y}
-                          for jid, (x, y) in layout.junctions.items()],
-            "roads":     [{"id": rid, "end_1": list(e1), "end_2": list(e2)}
-                          for rid, (e1, e2) in layout.road_endpoints.items()],
-        },
-    }
 
 
 # ---------------------------------------------------------------------------
