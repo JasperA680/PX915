@@ -1,60 +1,66 @@
-module tasep_model
-    ! One-dimensional open-boundary TASEP cellular automaton model.
+module tasep_model ! TEST
+    ! Network-wide open-boundary TASEP cellular automaton update module.
     !
-    ! This module implements a simple totally asymmetric simple exclusion process
-    ! (TASEP) on a one-dimensional lattice. Each lattice site is either empty or
-    ! occupied by one vehicle. Vehicles move only to the right and obey exclusion:
-    ! a vehicle can move into the next site only if that site is empty.
+    ! This module advances every lane in a ``road_network_t`` by one parallel
+    ! TASEP time step. Each lane is a 1-D lattice of ``cell`` objects; each site
+    ! is either empty or occupied by one vehicle. Vehicles move only toward the
+    ! downstream end (site ``L``) and obey the exclusion rule: a vehicle may hop
+    ! forward only if the next site is empty.
     !
-    ! The model uses open boundaries. At each time step:
+    ! Boundary conditions on a lane are controlled by two flags:
     !
-    ! - a vehicle may leave the right boundary with probability ``beta``;
-    ! - vehicles in the bulk move one site to the right if the next site is empty;
-    ! - a vehicle may enter the left boundary with probability ``alpha`` if the
-    !   first site is empty.
+    ! - ``open_in``  -- site 1 accepts new vehicles with probability ``alpha``.
+    ! - ``open_out`` -- site ``L`` releases vehicles with probability ``beta``.
     !
-    ! The density is defined as:
+    ! When a flag is ``.false.``, the corresponding boundary is closed (the lane
+    ! connects to a junction that handles cross-road transfers separately).
+    !
+    ! The lane density and time-averaged current are defined as:
     !
     ! .. math::
     !
     !    \rho = \frac{N}{L},
+    !    \qquad
+    !    J = \frac{1}{T}\sum_{t=1}^{T} n_{\mathrm{exit}}(t),
     !
-    ! where ``N`` is the number of occupied sites and ``L`` is the lattice length.
-    !
-    ! The measured exit current over a simulation can be estimated from:
-    !
-    ! .. math::
-    !
-    !    J = \frac{N_{\mathrm{exit}}}{N_{\mathrm{steps}}},
-    !
-    ! where ``N_exit`` is the total number of vehicles leaving the right boundary
-    ! over ``N_steps`` update steps.
+    ! where ``N`` is the number of occupied sites, ``L`` is the lane length,
+    ! and ``n_exit(t)`` is the number of vehicles that left via ``open_out``
+    ! at step ``t``.
 
     use road_network_mod
 
     implicit none
     private
 
-    public :: tasep_step
+    public :: tasep_lane_step
 
 contains
-
-
-    subroutine tasep_step(state, L, alpha, beta, exit_count)
-        ! Advance the open-boundary TASEP model by one time step.
+    subroutine tasep_lane_step(net)
+        ! Advance every lane in the road network by one parallel TASEP step.
         !
-        ! This routine performs one parallel-update TASEP step. The old lattice
-        ! state is copied before any moves are applied, so all bulk movements are
-        ! decided from the same previous-time configuration.
+        ! For each road and each lane within that road, this routine performs a
+        ! parallel-update TASEP step. All movement decisions are based on the
+        ! ``old`` snapshot that must have been set by ``snapshot_network`` before
+        ! this routine is called.
         !
-        ! The update consists of three stages:
+        ! The update for each lane proceeds in three stages:
         !
-        ! 1. If site ``L`` is occupied, the vehicle exits with probability
-        !    ``beta``.
-        ! 2. Each bulk vehicle attempts to hop one site to the right. The hop is
-        !    accepted if the target site was empty in the old state.
-        ! 3. If site ``1`` is empty after the bulk update, a new vehicle enters
-        !    with probability ``alpha``.
+        ! 1. **Clear old positions.** Every site that was occupied in ``old`` is
+        !    set to empty in the working copy ``updated``, ready to receive cars
+        !    at their new positions.
+        !
+        ! 2. **Bulk movement.** Each car in ``old`` attempts to hop from site
+        !    ``i`` to site ``i+1`` if site ``i+1`` was empty in ``old``. Cars
+        !    that cannot hop remain at ``i``. If the lane has ``open_out = .true.``
+        !    and the car is at site ``L``, it exits (is removed) with probability
+        !    ``beta`` instead.
+        !
+        !    Cars at site ``L`` that were already moved out by the junction step
+        !    (detected via ``junc_moved_L``) are skipped to avoid double-processing.
+        !
+        ! 3. **Open inflow.** If ``open_in = .true.`` and site 1 was empty in
+        !    ``old`` *and* remains empty after the bulk update, a new vehicle
+        !    enters at site 1 with probability ``alpha``.
         !
         ! The boundary rates satisfy:
         !
@@ -64,74 +70,6 @@ contains
         !    \qquad
         !    0 \leq \beta \leq 1.
         !
-        ! For a single step, ``exit_count`` is either zero or one. Over many steps,
-        ! summing ``exit_count`` gives the total number of vehicles that have left
-        ! the road, which can be used to estimate the current:
-        !
-        ! .. math::
-        !
-        !    J \approx \frac{1}{T}\sum_{t=1}^{T} n_{\mathrm{exit}}(t).
-        integer, intent(in) :: L
-        ! Number of lattice sites.
-        type(cell), intent(inout) :: state(L)
-        ! Lattice state. On entry, this is the current state. On return, it is the
-        ! updated state after one TASEP step.
-        real, intent(in) :: alpha
-        ! Entry probability at the left boundary.
-        real, intent(in) :: beta
-        ! Exit probability at the right boundary.
-        integer, intent(out) :: exit_count
-        ! Number of vehicles that exited during this time step.
-
-        type(cell) :: old_state(L)
-        ! Copy of the lattice before the update.
-        type(cell) :: new_state(L)
-        ! Lattice state being constructed for the next time step.
-        integer :: i
-        ! Lattice-site index used for the bulk update.
-        real :: r
-        ! Uniform random number used for stochastic entry and exit events.
-
-        old_state = state
-        new_state = old_state
-        exit_count = 0
-
-        ! Exit at the right boundary.
-        if (old_state(L)%has_car) then
-            call random_number(r)
-            if (r < beta) then
-                new_state(L)%has_car = .false.
-                new_state(L)%velocity = 0
-                exit_count = 1
-            end if
-        end if
-
-        ! Bulk motion.
-        do i = L - 1, 1, -1
-            if (old_state(i)%has_car .and. .not. old_state(i+1)%has_car) then
-                new_state(i)%has_car = .false.
-                new_state(i)%velocity = 0
-                new_state(i+1)%has_car = .true.
-                new_state(i+1)%velocity = 0
-            end if
-        end do
-
-        ! Entry at the left boundary.
-        if (.not. new_state(1)%has_car) then
-            call random_number(r)
-            if (r < alpha) then
-                new_state(1)%has_car = .true.
-                new_state(1)%velocity = 0
-            end if
-        end if
-
-        state = new_state
-    end subroutine tasep_step
-
-
-
-
-    subroutine tasep_lane_step(net)
         type(road_network_t), intent(inout) :: net
         integer :: r, k, L, i_site
         real    :: rnd
