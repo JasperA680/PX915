@@ -25,7 +25,7 @@ from matplotlib.backends.backend_qt5agg import (
 from matplotlib.figure import Figure
 
 from python.road_network import NetworkSpec, LayoutSpec
-from python.visualisation import plot_network_spec
+from python.CA_visualisation import plot_network_spec
 
 
 def _point_to_segment_dist(px, py, x1, y1, x2, y2) -> float:

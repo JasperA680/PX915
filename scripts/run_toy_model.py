@@ -16,7 +16,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / 'src'))
 
 from python.io import load_netcdf
-from python.visualisation import plot_summary
+from python.CA_visualisation import plot_summary
 import matplotlib.pyplot as plt
 
 NC_PATH = ROOT / 'data' / 'output' / 'simulation.nc'

@@ -14,7 +14,7 @@ from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg
 from matplotlib.figure import Figure
 
 from python.io import NetworkResult
-from python.visualisation import (
+from python.CA_visualisation import (
     plot_network_density,
     plot_network_spacetime,
     plot_network_layout,
