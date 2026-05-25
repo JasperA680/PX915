@@ -184,15 +184,8 @@ class NetworkWidget(QWidget):
         ylim = self._ax.get_ylim()
         diag = math.hypot(xlim[1] - xlim[0], ylim[1] - ylim[0])
         road_threshold     = diag * 0.08    # 8 % of axes diagonal
-        junction_threshold = diag * 0.05    # 5 % — tighter so it doesn't
-                                            # steal clicks from nearby roads
-
-        best_rid, best_road_dist = None, float("inf")
-        for rid, (p1, p2) in self._road_endpoints.items():
-            d = _point_to_segment_dist(px, py, p1[0], p1[1], p2[0], p2[1])
-            if d < best_road_dist:
-                best_road_dist = d
-                best_rid = rid
+        junction_threshold = diag * 0.06    # generous enough to cover the
+                                            # black-dot scatter marker
 
         best_jid, best_jdist = None, float("inf")
         for jid, (jx, jy) in self._junction_xy.items():
@@ -201,9 +194,20 @@ class NetworkWidget(QWidget):
                 best_jdist = d
                 best_jid = jid
 
-        # If a junction is the closest hit AND within its threshold, emit that.
-        if (best_jid is not None and best_jdist <= junction_threshold
-                and best_jdist <= best_road_dist):
+        # Junctions are explicit clickable nodes and roads usually *end* at
+        # them, so a click near a junction lands near the connected road
+        # endpoints too.  Prioritise the junction whenever the click is
+        # within its threshold (don't try to compare distances — too tight).
+        if best_jid is not None and best_jdist <= junction_threshold:
             self.junction_clicked.emit(int(best_jid))
-        elif best_rid is not None and best_road_dist <= road_threshold:
+            return
+
+        best_rid, best_road_dist = None, float("inf")
+        for rid, (p1, p2) in self._road_endpoints.items():
+            d = _point_to_segment_dist(px, py, p1[0], p1[1], p2[0], p2[1])
+            if d < best_road_dist:
+                best_road_dist = d
+                best_rid = rid
+
+        if best_rid is not None and best_road_dist <= road_threshold:
             self.road_clicked.emit(int(best_rid))

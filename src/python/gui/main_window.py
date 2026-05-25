@@ -379,7 +379,13 @@ class CATab(QWidget):
             self.log.emit(f"J{junction_id}: no routing matrix to edit")
             return
 
-        dlg = JunctionEditDialog(junction_id, j.routes, parent=self)
+        in_road_ids  = [int(leg.road) for leg in j.in_legs]
+        out_road_ids = [int(leg.road) for leg in j.out_legs]
+        dlg = JunctionEditDialog(
+            junction_id, j.routes,
+            in_road_ids=in_road_ids, out_road_ids=out_road_ids,
+            parent=self,
+        )
         if dlg.exec_() == JunctionEditDialog.Accepted:
             new_routes = dlg.routes()
             self._junction_overrides[junction_id] = new_routes
