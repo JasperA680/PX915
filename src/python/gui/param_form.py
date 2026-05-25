@@ -16,8 +16,7 @@ from PyQt5.QtWidgets import (
 )
 
 from python.road_network import SimParams
-
-_BIG_INT = 2_000_000_000
+from python.gui._common import BIG_INT as _BIG_INT
 
 
 class ParamForm(QWidget):

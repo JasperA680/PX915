@@ -4,11 +4,12 @@ from __future__ import annotations
 
 from typing import Optional
 
+import numpy as np
 from PyQt5.QtCore import Qt, pyqtSignal, QEvent
 from PyQt5.QtGui import QStandardItem, QStandardItemModel
 from PyQt5.QtWidgets import (
-    QTabWidget, QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
-    QComboBox, QSlider, QSpinBox, QLabel, QListView, QFrame,
+    QTabWidget, QWidget, QVBoxLayout, QHBoxLayout,
+    QComboBox, QSpinBox, QLabel, QListView,
 )
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg
 from matplotlib.figure import Figure
@@ -20,6 +21,7 @@ from python.CA_visualisation import (
     plot_network_layout,
     plot_fundamental_diagram,
 )
+from python.gui._common import StatusCorner, LaneSelector
 
 
 class _CanvasTab(QWidget):
@@ -35,6 +37,11 @@ class _CanvasTab(QWidget):
     def clear(self):
         self.ax.clear()
         self.canvas.draw_idle()
+
+    def _reset_axes(self):
+        """Drop every artist (axes, colorbars) and start with a fresh single axes."""
+        self.figure.clear()
+        self.ax = self.figure.add_subplot(111)
 
 
 # ---------------------------------------------------------------------------
@@ -129,8 +136,6 @@ class _DensityTab(_CanvasTab):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        import numpy as np
-        self._np = np
 
         row = QHBoxLayout()
         row.addWidget(QLabel("Roads:"))
@@ -170,7 +175,7 @@ class _DensityTab(_CanvasTab):
 
     def set_result(self, result: NetworkResult):
         self._result = result
-        lane_road = self._np.asarray(result.lane_road_id)
+        lane_road = np.asarray(result.lane_road_id)
         n_roads = result.road_density.shape[1]
         self._lanes_per_road = {
             r + 1: int((lane_road == (r + 1)).sum()) for r in range(n_roads)
@@ -281,12 +286,11 @@ class _FundamentalDiagramTab(_CanvasTab):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self._show_placeholder()
+        self.show_placeholder()
 
-    def _show_placeholder(self):
-        self.figure.clear()
-        ax = self.figure.add_subplot(111)
-        ax.text(
+    def show_placeholder(self):
+        self._reset_axes()
+        self.ax.text(
             0.5, 0.5,
             "Fundamental diagram\n\n"
             "A J–ρ diagram requires a parameter sweep, not a single run.\n\n"
@@ -295,21 +299,18 @@ class _FundamentalDiagramTab(_CanvasTab):
             "  • NS:    periodic-ring density sweep (uses v_max + p_slow)\n"
             "  • TASEP: open-chain α/β phase-diagram sweep",
             ha="center", va="center",
-            transform=ax.transAxes,
+            transform=self.ax.transAxes,
             fontsize=11, color="gray",
         )
-        ax.set_axis_off()
-        self.ax = ax
+        self.ax.set_axis_off()
         self.canvas.draw_idle()
 
     def set_sweep(self, rho, J, title: str = None,
                   model: str = 'TASEP', v_max: int = 1):
         """Populate the FD scatter from a parameter sweep."""
-        self.figure.clear()
-        ax = self.figure.add_subplot(111)
-        plot_fundamental_diagram(rho, J, ax=ax, title=title,
+        self._reset_axes()
+        plot_fundamental_diagram(rho, J, ax=self.ax, title=title,
                                  model=model, v_max=v_max)
-        self.ax = ax
         self.canvas.draw_idle()
 
 
@@ -320,25 +321,19 @@ class _FundamentalDiagramTab(_CanvasTab):
 class _SpacetimeTab(_CanvasTab):
     def __init__(self, parent=None):
         super().__init__(parent)
-        import numpy as np
-        self._np = np
 
         row = QHBoxLayout()
         row.addWidget(QLabel("Road:"))
         self.road_combo = QComboBox()
         row.addWidget(self.road_combo)
         row.addSpacing(12)
-        self._lane_label = QLabel("Lane:")
-        self.lane_combo = QComboBox()
-        row.addWidget(self._lane_label)
-        row.addWidget(self.lane_combo)
+        self.lane_selector = LaneSelector()
+        row.addWidget(self.lane_selector)
         row.addStretch(1)
         self._layout.insertLayout(0, row)
         self._result: Optional[NetworkResult] = None
         self.road_combo.currentIndexChanged.connect(self._on_road_changed)
-        self.lane_combo.currentIndexChanged.connect(self._refresh)
-        self._lane_label.setVisible(False)
-        self.lane_combo.setVisible(False)
+        self.lane_selector.lane_changed.connect(self._refresh)
 
     def set_result(self, result: NetworkResult):
         self._result = result
@@ -355,19 +350,8 @@ class _SpacetimeTab(_CanvasTab):
         if self._result is None:
             return
         rid = self.road_combo.currentData() or 1
-        lane_idxs = self._np.where(self._result.lane_road_id == int(rid))[0]
-        n_lanes = len(lane_idxs)
-
-        self.lane_combo.blockSignals(True)
-        self.lane_combo.clear()
-        for i in range(n_lanes):
-            self.lane_combo.addItem(f"Lane {i + 1}", i)
-        self.lane_combo.blockSignals(False)
-
-        show_lane = n_lanes > 1
-        self._lane_label.setVisible(show_lane)
-        self.lane_combo.setVisible(show_lane)
-
+        n_lanes = int(np.sum(np.asarray(self._result.lane_road_id) == int(rid)))
+        self.lane_selector.set_lanes(n_lanes)
         self._refresh()
 
     def _refresh(self):
@@ -375,11 +359,9 @@ class _SpacetimeTab(_CanvasTab):
             return
         self.ax.clear()
         rid = self.road_combo.currentData() or 1
-        lane_idx = self.lane_combo.currentData()
-        if lane_idx is None:
-            lane_idx = 0
         plot_network_spacetime(self._result, road_id=int(rid),
-                               lane_index=int(lane_idx), ax=self.ax)
+                               lane_index=self.lane_selector.current_lane(),
+                               ax=self.ax)
         self.canvas.draw_idle()
 
 
@@ -467,8 +449,7 @@ class _HeatmapTab(_CanvasTab):
             return
         t0 = self.box_from.value() - 1   # 1-indexed → 0-indexed
         t1 = self.box_to.value()   - 1
-        self.figure.clear()
-        self.ax = self.figure.add_subplot(111)
+        self._reset_axes()
         occupancy_t = t0 if t0 == t1 else (t0, t1)
         plot_network_layout(self._result, ax=self.ax, occupancy_t=occupancy_t)
         self.canvas.draw_idle()
@@ -495,40 +476,11 @@ class PlotPanel(QTabWidget):
         # FD tab disabled until a sweep populates it.
         self.setTabEnabled(self.FD_TAB_INDEX, False)
 
-        # Stale-result status indicator (top-right corner of the tab bar).
-        # Wrap in a holder so we can give it real padding without the QTabBar
-        # eating it.  Padding pushes the label up + away from the tabs so it
-        # doesn't overlap the tab text.
-        holder = QWidget()
-        hbox = QHBoxLayout(holder)
-        hbox.setContentsMargins(8, 0, 14, 4)
-        self._status = QLabel()
-        hbox.addWidget(self._status)
-        self.setCornerWidget(holder, Qt.TopRightCorner)
-        self.set_status(None)   # initial "no results yet"
+        self._status_corner = StatusCorner()
+        self.setCornerWidget(self._status_corner, Qt.TopRightCorner)
 
-    # ------------------------------------------------------------------
-    # Stale / fresh status indicator
-    # ------------------------------------------------------------------
-
-    def set_status(self, kind: str, summary: str = ""):
-        """Update the corner indicator with a minimal label.
-
-        kind: 'fresh', 'stale', 'running', or None / 'empty'.
-        ``summary`` is accepted for API parity but no longer displayed.
-        """
-        if kind == "fresh":
-            color, text = "#4a8a6a", "● up to date"
-        elif kind == "stale":
-            color, text = "#b08040", "● stale"
-        elif kind == "running":
-            color, text = "#5a7fad", "● running…"
-        else:
-            color, text = "#9a9a9a", "● no results"
-        self._status.setText(text)
-        self._status.setStyleSheet(
-            f"color: {color}; font-size: 10px; font-weight: 500;"
-        )
+    def set_status(self, kind, summary: str = ""):
+        self._status_corner.set_status(kind, summary)
 
     def clear(self):
         self.tab_density.clear()
@@ -559,6 +511,6 @@ class PlotPanel(QTabWidget):
 
     def reset_fd(self):
         """Restore the FD tab placeholder and disable it (e.g. on preset switch)."""
-        self.tab_fd._show_placeholder()
+        self.tab_fd.show_placeholder()
         self.setTabEnabled(self.FD_TAB_INDEX, False)
         self.setTabText(self.FD_TAB_INDEX, "Fundamental diagram")

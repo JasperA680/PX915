@@ -10,8 +10,7 @@ from PyQt5.QtWidgets import (
     QVBoxLayout, QHBoxLayout, QLabel, QGridLayout, QGroupBox,
 )
 
-_BIG_INT = 2_000_000_000
-_BIG_FLOAT = 1e12
+from python.gui._common import BIG_INT as _BIG_INT
 
 
 class RoadEditDialog(QDialog):

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import sys
 from typing import Dict, List, Optional
 
 from PyQt5.QtCore import pyqtSignal
@@ -10,6 +9,8 @@ from PyQt5.QtWidgets import (
     QWidget, QFormLayout, QSpinBox, QDoubleSpinBox, QGroupBox, QVBoxLayout,
     QComboBox, QLineEdit,
 )
+
+from python.gui._common import BIG_INT as _BIG_INT, BIG_FLOAT as _BIG_FLOAT
 
 
 # Single-lane Riemann presets (mirrors scripts/run_pde_model.py).
@@ -55,9 +56,6 @@ MULTILANE_PRESETS: Dict[str, dict] = {
 
 CUSTOM_LABEL = "(custom)"
 PRESETS_ORDER = [CUSTOM_LABEL] + list(SINGLE_LANE_PRESETS) + list(MULTILANE_PRESETS)
-
-_BIG_INT = 2_000_000_000
-_BIG_FLOAT = 1e12
 
 
 def _parse_csv_floats(text: str) -> Optional[List[float]]:

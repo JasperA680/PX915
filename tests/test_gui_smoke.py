@@ -98,10 +98,10 @@ def main():
         "PDE tab missing PDEPlotPanel"
     assert win.pde_tab.run_button.text() == "Run", \
         "PDE tab missing Run button"
-    assert win.pde_tab.plot_panel.count() == 5, \
-        f"PDE plot panel should have 5 tabs, got {win.pde_tab.plot_panel.count()}"
-    # Multi-lane-only tabs (3, 4) start disabled.
-    for i in (3, 4):
+    assert win.pde_tab.plot_panel.count() == 4, \
+        f"PDE plot panel should have 4 tabs, got {win.pde_tab.plot_panel.count()}"
+    # Multi-lane-only tabs (Lane densities, Mass conservation) start disabled.
+    for i in (2, 3):
         assert not win.pde_tab.plot_panel.isTabEnabled(i), \
             f"PDE plot tab {i} should be disabled before a run"
     print("--- PDE tab: PASS ---")
