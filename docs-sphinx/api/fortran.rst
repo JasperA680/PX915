@@ -45,6 +45,17 @@ Nagel-Schreckenberg update rule.
 
 .. f:autosrcfile:: simulation.f90
 
+Road-network models
+-------------------
+
+Junction module
+~~~~~~~~~~~~~~~
+
+The ``junction_mod`` module evaluates movements through road-network junctions,
+including destination sampling, right-of-way rules, physical blocking and
+stochastic deadlock resolution.
+
+.. f:autosrcfile:: junction.f90
 
 Continuum PDE models
 --------------------
