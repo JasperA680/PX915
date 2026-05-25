@@ -1,4 +1,4 @@
-module tasep_model ! TEST
+module tasep_model
     ! Network-wide open-boundary TASEP cellular automaton update module.
     !
     ! This module advances every lane in a ``road_network_t`` by one parallel
