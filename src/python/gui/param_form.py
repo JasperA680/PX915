@@ -163,6 +163,8 @@ class ParamForm(QWidget):
             return {"L": L, "alpha": a, "beta": b}
         if preset == "two_lane":
             return {"L": L, "alpha": a, "beta": b}
+        if preset == "t_junction":
+            return {"L": L, "alpha": a, "beta": b}   # uses preset's p_through default
         if preset == "crossroads":
             return {"L": L, "alpha": a, "beta": b,
                     "p_left":  self._default_p_left,

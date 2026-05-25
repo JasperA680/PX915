@@ -43,7 +43,7 @@ CA_MODELS = ("NS", "TASEP")
 # whose roads are still individual chains connected by junctions.  Only
 # ``two_lane`` is excluded because the whole point of that preset is the
 # lane-change feature, which TASEP doesn't model.
-TASEP_OK_PRESETS = {"single_lane", "crossroads", "roundabout", "town"}
+TASEP_OK_PRESETS = {"single_lane", "t_junction", "crossroads", "roundabout", "town"}
 
 # Presets where the fundamental-diagram sweep is meaningful.  The sweep
 # uses pure-Python TASEP on a single chain, so junctions / multilane / routing
