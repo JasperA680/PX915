@@ -34,6 +34,16 @@ speed limit for all cars.
 
 .. f:autosrcfile:: ns_model.f90
 
+Cellular automata lane-change module
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The ``lane_change_mod`` module introduces the ability to include lane-changing 
+behaviour to any of the CA models, allowing for simulation of more realistic driver 
+behaviour.
+
+.. f:autosrcfile:: lane_change.f90
+
+
 
 Cellular automata simulation module
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

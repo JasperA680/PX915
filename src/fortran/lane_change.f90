@@ -1,5 +1,5 @@
 module lane_change_mod
-    !--------------------------------------------------------------------
+    
     ! Lane-changing sub-step for the multi-lane Nagel-Schreckenberg lc_model.
     !
     ! Based on: Rickert, Nagel, Schreckenberg, Latour (1996),
@@ -28,7 +28,7 @@ module lane_change_mod
     ! All decisions read from the pre-snapshotted `old` arrays (strict
     ! parallel update).  Results are written to the `cells` arrays.
     ! The caller must call snapshot_network() before and after this step.
-    !--------------------------------------------------------------------
+
     use road_network_mod
     implicit none
     private
