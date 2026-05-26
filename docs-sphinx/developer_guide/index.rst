@@ -5,4 +5,4 @@ Developer guide
    :maxdepth: 2
 
    numerical_methods
-   adding_features
+   parallelisation
