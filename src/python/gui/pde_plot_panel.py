@@ -103,6 +103,9 @@ class _SnapshotsTab(_CanvasTab):
         self.slider = QSlider(Qt.Horizontal)
         self.slider.setRange(2, 12)
         self.slider.setValue(6)
+        self.slider.setToolTip(
+            "Number of evenly-spaced time snapshots to overlay on the plot."
+        )
         self.label = QLabel("6")
         self.slider.valueChanged.connect(self._on_slide)
         snap_row.addWidget(self.slider)
@@ -149,6 +152,9 @@ class _LaneDensitiesTab(_CanvasTab):
         row.addWidget(QLabel("x position:"))
         self.slider = QSlider(Qt.Horizontal)
         self.slider.setRange(0, 0)
+        self.slider.setToolTip(
+            "Position along the road at which to compare per-lane densities."
+        )
         self.label = QLabel("0.000")
         self.slider.valueChanged.connect(self._on_slide)
         row.addWidget(self.slider)

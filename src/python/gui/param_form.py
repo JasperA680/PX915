@@ -73,7 +73,7 @@ class ParamForm(QWidget):
         self.p_slow.setSingleStep(0.05)
         self.p_slow.setValue(0.2)
         self.p_slow.setToolTip(
-            "p_slow: Dawdle (randomisation) probability.\n"
+            "p_slow: Random braking probability.\n"
             "At each step a vehicle decelerates by 1 cell/step with this probability\n"
             "(Nagel–Schreckenberg noise term). 0 = no noise, 1 = maximum noise."
         )
@@ -81,7 +81,7 @@ class ParamForm(QWidget):
         form.addRow("Steps", self.n_steps)
         form.addRow("RNG seed", self.rng_seed)
         form.addRow("Max speed (cells/step)", self.v_max)
-        form.addRow("Dawdle probability", self.p_slow)
+        form.addRow("Braking probability", self.p_slow)
         outer.addWidget(sim_group)
 
         # Lane-change controls.  Disabled when the current spec has no

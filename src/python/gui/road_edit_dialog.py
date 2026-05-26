@@ -30,6 +30,11 @@ class RoadEditDialog(QDialog):
             self.alpha_box.setSingleStep(0.05)
             self.alpha_box.setDecimals(3)
             self.alpha_box.setValue(alpha)
+            self.alpha_box.setToolTip(
+                "α: Probability per step that a new vehicle enters at the open\n"
+                "left boundary of this road (0 = never, 1 = whenever the entry\n"
+                "cell is free)."
+            )
             form.addRow("Entry rate α (0–1):", self.alpha_box)
         else:
             self.alpha_box = None
@@ -41,6 +46,10 @@ class RoadEditDialog(QDialog):
             self.beta_box.setSingleStep(0.05)
             self.beta_box.setDecimals(3)
             self.beta_box.setValue(beta)
+            self.beta_box.setToolTip(
+                "β: Probability per step that a vehicle on the last cell exits\n"
+                "the open right boundary (0 = never, 1 = always when present)."
+            )
             form.addRow("Exit rate β (0–1):", self.beta_box)
         else:
             self.beta_box = None
@@ -49,6 +58,10 @@ class RoadEditDialog(QDialog):
         self.length_box = QSpinBox()
         self.length_box.setRange(1, _BIG_INT)
         self.length_box.setValue(max(1, int(length)))
+        self.length_box.setToolTip(
+            "Number of cells in this road.  Applied uniformly to every lane\n"
+            "of the road; longer roads take longer to fill and to drain."
+        )
         form.addRow("Length (cells):", self.length_box)
 
         buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)

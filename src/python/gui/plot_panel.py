@@ -325,6 +325,10 @@ class _SpacetimeTab(_CanvasTab):
         row = QHBoxLayout()
         row.addWidget(QLabel("Road:"))
         self.road_combo = QComboBox()
+        self.road_combo.setToolTip(
+            "Road whose space-time diagram is displayed.  Multi-lane roads\n"
+            "expose a separate lane selector to the right."
+        )
         row.addWidget(self.road_combo)
         row.addSpacing(12)
         self.lane_selector = LaneSelector()

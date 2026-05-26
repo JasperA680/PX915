@@ -70,12 +70,28 @@ class CATab(RunTab):
         self.preset_combo = QComboBox()
         for name in PRESETS:
             self.preset_combo.addItem(name)
+        self.preset_combo.setToolTip(
+            "Network topology to simulate.  Changing the preset rebuilds the\n"
+            "network preview and resets any per-road or per-junction edits.\n"
+            "  single_lane — one open chain\n"
+            "  two_lane    — two parallel same-direction lanes\n"
+            "  t_junction  — three-leg merge/diverge\n"
+            "  crossroads  — four-leg intersection with routing\n"
+            "  roundabout  — circular ring with arms\n"
+            "  town        — small grid of crossroads"
+        )
         toolbar_row.addWidget(self.preset_combo)
         toolbar_row.addSpacing(12)
         toolbar_row.addWidget(QLabel("Model:"))
         self.model_combo = QComboBox()
         for m in CA_MODELS:
             self.model_combo.addItem(m)
+        self.model_combo.setToolTip(
+            "Cellular-automaton update rule.\n"
+            "  NS    — Nagel–Schreckenberg (multi-speed, dawdling probability)\n"
+            "  TASEP — strict 1D single-lane chain (greyed out where it isn't\n"
+            "          physically meaningful, e.g. multi-lane presets)."
+        )
         toolbar_row.addWidget(self.model_combo)
         toolbar_row.addSpacing(12)
         self.run_button = QPushButton("Run")

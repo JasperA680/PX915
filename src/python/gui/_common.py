@@ -80,6 +80,10 @@ class LaneSelector(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.addWidget(QLabel("Lane:"))
         self._combo = QComboBox()
+        self._combo.setToolTip(
+            "Which lane of the selected road to display.  Only shown when "
+            "the data has more than one lane."
+        )
         layout.addWidget(self._combo)
         self._combo.currentIndexChanged.connect(self._emit)
         self.setVisible(False)

@@ -39,6 +39,14 @@ class PDETab(RunTab):
         self.preset_combo = QComboBox()
         for name in PRESETS_ORDER:
             self.preset_combo.addItem(name)
+        self.preset_combo.setToolTip(
+            "Pre-configured PDE scenario.  Picking one populates the\n"
+            "parameter form below; editing any field afterwards flips the\n"
+            "selector to '(custom)' so the run is clearly user-defined.\n"
+            "Single-lane presets cover Riemann shocks and rarefactions;\n"
+            "multilane presets demonstrate independent vs coupled lanes,\n"
+            "mass conservation, and fast/slow overtaking lanes."
+        )
         toolbar_row.addWidget(self.preset_combo)
         toolbar_row.addSpacing(12)
         self.run_button = QPushButton("Run")

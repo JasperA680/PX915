@@ -77,16 +77,49 @@ routines documented in the :doc:`../api/python` page.
 Running the Python GUI
 ----------------------
 
-The project includes a Python GUI for running and visualising simulations.
+A PyQt5 GUI bundles both models behind a single window so simulations can be
+configured, run, and inspected interactively. The Fortran binaries (``make``)
+must already be built — the GUI launches them as subprocesses.
 
-From the project root, run:
+From the project root, with the virtual environment active, run:
 
 .. code-block:: bash
 
-   python src/python/gui.py
+   python scripts/run_gui.py
 
-If the GUI file has a different name, replace ``gui.py`` with the correct script
-name in ``src/python/``.
+The window has two top-level tabs:
+
+* **Cellular Automaton (CA)** — choose a network preset
+  (``single_lane``, ``two_lane``, ``t_junction``, ``crossroads``, ``roundabout``,
+  ``town``) and a model (``NS`` or ``TASEP``); the network preview shows the
+  layout, and clicking a road opens an editor for its α, β and length, while
+  clicking a junction opens its routing matrix. Use the matplotlib toolbar
+  above the preview to pan and zoom, or pick a road from the **Focus on**
+  dropdown to jump-zoom to it — α/β/length labels only appear once you zoom
+  in close enough to read them. A separate **Run FD sweep** button populates
+  the fundamental-diagram tab from a parameter sweep; this is only meaningful
+  for the ``single_lane`` preset, and the button is greyed out elsewhere.
+* **PDE Continuum Model** — pick a single-lane Riemann preset
+  (shock, rarefaction, …) or one of the multilane scenarios, or edit any
+  parameter by hand; the form syncs ``n_steps`` and total time ``T`` via the
+  CFL estimate.
+
+Each tab has its own plot panel that refreshes after every run, with
+several complementary views of the result; tabs that don't apply to the
+current run (per-lane plots, mass-conservation diagnostics, the
+fundamental-diagram view) stay disabled until the relevant data is
+available.  A corner indicator marks results as *up to date*, *stale*,
+*running…*, or empty; editing any parameter after a run flags the
+displayed plots as stale until the next **Run**.
+
+Every parameter input — spin boxes, sliders, and dropdowns alike — carries
+an explanatory tooltip. Hover the cursor over any control to see what it
+does and any caveats (for example, that ``v_limit`` should be set equal to
+``v_max`` for the unrestricted Greenshields flux).
+
+Output NetCDF files are written under ``data/output/gui/`` (CA) and
+``data/output/gui_pde/`` (PDE); the bottom-of-window log dock streams the
+solver's progress and prints per-road steady-state diagnostics on completion.
 
 Building the documentation
 --------------------------
