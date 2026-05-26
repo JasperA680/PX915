@@ -104,7 +104,7 @@ program run_network
     argc = command_argument_count()
 
     if (argc < 2) then
-        write(*,*) "usage: run_network <config.json> <out.nc>"
+        write(*,*) "usage: run_network <config.nc> <out.nc>"
         stop 1
     end if
 

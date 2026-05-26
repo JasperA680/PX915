@@ -54,6 +54,7 @@ fortran_src = [
     "../src/fortran/network_simulation.f90",
     "../src/fortran/network_io.f90",
     "../src/fortran/run_network.f90",
+    "../src/fortran/fundamental_diagram.f90",
 ]
 
 # Use NumPy-style Python docstrings

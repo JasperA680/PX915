@@ -382,7 +382,12 @@ class CATab(RunTab):
             L = int(self._current_spec.roads[0].lanes[0].length)
         else:
             L = 100 if model == "NS" else 50
-        n_points = 30
+        # TASEP runs an alpha- and a beta-branch, so n_points = 30 yields 60
+        # output rows; bump NS to 60 so both diagrams have the same point
+        # density. NS rounds each target rho to an integer vehicle count, so
+        # cap at L to avoid two adjacent points collapsing onto the same
+        # n_vehicles on short rings.
+        n_points = min(60, L) if model == "NS" else 30
         v_max = int(self.param_form.v_max.value())
         p_slow = float(self.param_form.p_slow.value())
         self.fd_button.setEnabled(False)

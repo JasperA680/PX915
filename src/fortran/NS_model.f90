@@ -52,6 +52,42 @@ contains
             do k = 1, size(net%roads(r)%lane)
                 L = net%roads(r)%lane(k)%length
                 allocate(updated(L))
+
+                if (net%roads(r)%lane(k)%is_periodic) then
+                    ! Periodic ring: site 1 follows site L with no junction or open
+                    ! boundary interaction. Gap and position both wrap modulo L.
+                    updated%has_car = .false.
+                    updated%velocity = 0
+
+                    do i_site = 1, L
+                        if (.not. net%roads(r)%lane(k)%old(i_site)%has_car) cycle
+
+                        gap = L - 1
+                        do j = 1, L - 1
+                            if (net%roads(r)%lane(k)%old(1 + mod(i_site - 1 + j, L))%has_car) then
+                                gap = j - 1
+                                exit
+                            end if
+                        end do
+
+                        v = net%roads(r)%lane(k)%old(i_site)%velocity
+                        v = min(v + 1, v_max)
+                        v = min(v, gap)
+                        if (v > 0) then
+                            call random_number(rnd)
+                            if (rnd < p_slow) v = v - 1
+                        end if
+
+                        new_pos = 1 + mod(i_site - 1 + v, L)
+                        updated(new_pos)%has_car = .true.
+                        updated(new_pos)%velocity = v
+                    end do
+
+                    net%roads(r)%lane(k)%cells = updated
+                    deallocate(updated)
+                    cycle
+                end if
+
                 updated = net%roads(r)%lane(k)%cells
 
                 ! Detect whether the junction already moved the holding-cell vehicle out.

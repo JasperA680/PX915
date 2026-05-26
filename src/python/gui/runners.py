@@ -7,7 +7,7 @@ touching the worker directly.
 
 - ``RunnerThread``    — Fortran network/CA simulation
 - ``PDERunnerThread`` — Fortran LWR PDE solver
-- ``FDSweepThread``   — pure-Python fundamental-diagram sweep
+- ``FDSweepThread``   — Fortran fundamental-diagram sweep
 """
 
 from __future__ import annotations
@@ -20,6 +20,7 @@ from PyQt5.QtCore import QThread, pyqtSignal
 from python.road_network import NetworkSpec, SimParams, LayoutSpec
 from python.run_simulation import run_simulation
 from python.pde_runner import run_pde
+from python.fd_runner import run_fd_sweep, load_fd_netcdf
 
 
 class RunnerThread(QThread):
@@ -77,10 +78,11 @@ class PDERunnerThread(QThread):
 
 
 class FDSweepThread(QThread):
-    """Run a pure-Python fundamental-diagram sweep off the UI thread.
+    """Run the Fortran fundamental-diagram sweep off the UI thread.
 
     Supports both ``TASEP`` (α/β phase-diagram sweep on an open chain) and
-    ``NS`` (density sweep on a periodic ring; takes v_max and p_slow).
+    ``NS`` (density sweep on a periodic ring; uses v_max and p_slow).
+    Shells out to ``build/fd_sweep`` and reads the resulting NetCDF.
     """
 
     # rho, J, model_name, info_dict
@@ -88,27 +90,37 @@ class FDSweepThread(QThread):
     finished_error = pyqtSignal(str)
 
     def __init__(self, model: str = "TASEP", L: int = 50, n_points: int = 30,
-                 v_max: int = 5, p_slow: float = 0.2, parent=None):
+                 v_max: int = 5, p_slow: float = 0.2,
+                 output_path: os.PathLike = None,
+                 exe: os.PathLike = None,
+                 parent=None):
         super().__init__(parent)
         self.model = model
         self.L = L
         self.n_points = n_points
         self.v_max = v_max
         self.p_slow = p_slow
+        self._output_path = Path(output_path) if output_path else None
+        self._exe = Path(exe) if exe else None
 
     def run(self) -> None:
         try:
-            if self.model == "NS":
-                from python.analysis import fundamental_diagram_ns
-                rho, J = fundamental_diagram_ns(
-                    L=self.L, n_points=self.n_points,
-                    v_max=self.v_max, p_slow=self.p_slow,
-                )
-            else:
-                from python.analysis import fundamental_diagram
-                rho, J = fundamental_diagram(L=self.L, n_points=self.n_points)
-            info = dict(L=self.L, n_points=self.n_points,
-                        v_max=self.v_max, p_slow=self.p_slow)
-            self.finished_ok.emit(rho, J, self.model, info)
+            kwargs = dict(
+                model=self.model, L=self.L, n_points=self.n_points,
+                v_max=self.v_max, p_slow=self.p_slow,
+            )
+            if self._output_path is not None:
+                kwargs["output_path"] = self._output_path
+            if self._exe is not None:
+                kwargs["exe"] = self._exe
+            out = run_fd_sweep(**kwargs)
+            data = load_fd_netcdf(out)
+            info = dict(
+                L=self.L, n_points=self.n_points,
+                v_max=self.v_max, p_slow=self.p_slow,
+                n_burnin=int(data["n_burnin"]),
+                n_measure=int(data["n_measure"]),
+            )
+            self.finished_ok.emit(data["rho"], data["J"], self.model, info)
         except Exception as exc:
             self.finished_error.emit(str(exc))

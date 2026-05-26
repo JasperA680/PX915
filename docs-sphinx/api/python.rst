@@ -49,12 +49,12 @@ config-writing step independently for inspection or pre-staging.
 Analysis module
 ---------------
 
-The ``analysis`` module provides post-processing functions for both CA and PDE
-simulation outputs.  For CA models it implements ``run_tasep``, ``tasep_step``,
-``run_ns_density``, and ``fundamental_diagram`` / ``fundamental_diagram_ns``
-sweeps over density.  For PDE outputs it provides ``compute_total_density``,
-``compute_total_flow``, ``compute_total_mass``, and
-``compute_multilane_fundamental_diagram`` / ``pde_multilane_fundamental_diagram``.
+The ``analysis`` module provides post-processing for PDE outputs:
+``compute_total_density``, ``compute_total_flow``, ``compute_total_mass``,
+and ``compute_multilane_fundamental_diagram`` /
+``pde_multilane_fundamental_diagram``.  The CA / NS fundamental-diagram
+sweeps that used to live here are now run by the Fortran driver
+``build/fd_sweep`` and invoked from Python through ``fd_runner``.
 
 .. automodule:: analysis
    :members:
@@ -72,6 +72,21 @@ diagram plots: ``q_of_rho``, ``dq_drho``, ``rho_critical``, ``q_newell``,
 ``dq_drho_newell``, and ``rho_critical_newell``.
 
 .. automodule:: pde_runner
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+Fundamental-diagram runner module
+---------------------------------
+
+The ``fd_runner`` module is the Python interface to the Fortran
+fundamental-diagram sweep driver (``build/fd_sweep``).  ``run_fd_sweep``
+invokes the binary for the chosen model (open-boundary 1D TASEP with an
+alpha / beta sweep, or periodic-ring Nagel–Schreckenberg with a density
+sweep); ``load_fd_netcdf`` reads the resulting ``rho`` and ``J`` arrays
+back as a plain dictionary alongside the sweep metadata.
+
+.. automodule:: fd_runner
    :members:
    :undoc-members:
    :show-inheritance:

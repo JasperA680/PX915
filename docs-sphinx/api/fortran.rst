@@ -30,7 +30,11 @@ Nagel-Schreckenberg model
 The ``ns_model`` module contains the update logic for the implementation of a
 Nagel-Schreckenberg type cellular automaton model, introducing variable speeds
 and more realistic driver behaviour. It defines the update logic and a universal
-speed limit for all cars.
+speed limit for all cars. Each lane is updated under either open or periodic
+boundary conditions, selected per-lane via the ``is_periodic`` flag on
+``lane_t``: open lanes are driven by the per-lane ``alpha`` / ``beta``
+inflow and outflow rates (or by a junction at the holding cell), while
+periodic lanes wrap site 1 onto site ``L`` and conserve the vehicle count.
 
 .. f:autosrcfile:: ns_model.f90
 
@@ -63,7 +67,10 @@ Road network module
 The ``road_network_mod`` module defines the core data types for the
 road-network model, including the cell, lane, road, junction and network
 container types. It also provides utility routines for snapshotting lane state
-and counting occupied cells across the network.
+and counting occupied cells across the network. A lane may be marked as
+periodic via the ``is_periodic`` flag on ``lane_t``; this is used by the
+fundamental-diagram sweep to drive an NS chain as a closed ring at fixed
+vehicle count.
 
 .. f:autosrcfile:: road_network.f90
 
@@ -104,7 +111,9 @@ The ``network_simulation_mod`` module provides the top-level driver for a
 single network timestep. It orchestrates the full parallel update sequence:
 network snapshot, optional lane-changing sub-step, junction evaluation, and
 per-lane cellular automaton update using either the TASEP or
-Nagel-Schreckenberg rule.
+Nagel-Schreckenberg rule. The longitudinal updates themselves live in
+``tasep_model`` and ``NS_model``; this module only sequences them with the
+junction and lane-change sub-steps.
 
 .. f:autosrcfile:: network_simulation.f90
 
@@ -129,6 +138,37 @@ number generator deterministically, runs the simulation loop, and writes the
 result to a NetCDF file.
 
 .. f:autosrcfile:: run_network.f90
+
+
+Fundamental-diagram sweep
+-------------------------
+
+Fundamental-diagram module
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The ``fundamental_diagram_mod`` module measures the steady-state density and
+current of a CA chain across a parameter sweep, and writes the resulting
+``(rho, J)`` arrays to a NetCDF file. There is no separate per-chain update
+kernel: each measurement run builds a minimal one-lane ``road_network_t`` and
+drives it through the same ``tasep_lane_step`` (open boundary, alpha / beta
+sweep) and ``NS_model_step`` (periodic ring, fixed vehicle count) routines
+used by the full network simulator. The companion ``fd_sweep`` program in the
+same source file is the executable entry point used by the Python launcher
+(``python.fd_runner.run_fd_sweep``); it parses the CLI, runs the chosen
+alpha / beta or density branch, and calls ``write_fd_netcdf`` to persist the
+result.
+
+For TASEP the sweep traverses the open-boundary phase diagram along two
+deterministic-boundary cuts: alpha is swept with ``beta = 1`` (LD branch
+closing off at the ``(0.5, 0.5)`` max-current point) and beta is swept with
+``alpha = 1`` (HD branch back to the same point). Holding the fixed boundary
+deterministic removes its stochastic contribution to the bulk and recovers
+the textbook ``J(rho) = min(rho, 1 - rho)`` curve; choosing it on the
+LD/HD-MC phase-boundary line at ``0.5`` instead would put the swept-parameter
+> 0.5 half of each branch onto that boundary, and at large L the diagram
+would develop a visible gap around ``rho = 0.5``.
+
+.. f:autosrcfile:: fundamental_diagram.f90
 
 
 Continuum PDE models

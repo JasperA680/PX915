@@ -36,7 +36,7 @@ module network_io_mod
     implicit none
     private
 
-    public :: write_network_netcdf
+    public :: write_network_netcdf, check
 
 contains
 

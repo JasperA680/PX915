@@ -85,6 +85,10 @@ module road_network_mod
         ! Whether site 1 is an open inflow boundary.
         logical :: open_out = .false.
         ! Whether site ``length`` is an open outflow boundary.
+        logical :: is_periodic = .false.
+        ! Whether the lane is a closed ring: site 1 follows site ``length`` with
+        ! no junction or boundary interaction. Used by the fundamental-diagram
+        ! sweep to measure :math:`J(\rho)` at fixed vehicle count.
     end type lane_t
 
 

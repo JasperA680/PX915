@@ -19,6 +19,7 @@ BUILD_DIR = build
 VEHICLE_SRC      = $(SRC_DIR)/vehicle.f90
 NETWORK_SRC      = $(SRC_DIR)/road_network.f90
 NETWORK_INIT_SRC = $(SRC_DIR)/network_init.f90
+TASEP_SRC        = $(SRC_DIR)/tasep.f90
 NS_MODEL_SRC     = $(SRC_DIR)/NS_model.f90
 JUNCTION_SRC     = $(SRC_DIR)/junction.f90
 LANE_CHANGE_SRC  = $(SRC_DIR)/lane_change.f90
@@ -33,7 +34,8 @@ NETWORK_IO_SRC      = $(SRC_DIR)/network_io.f90
 RUN_NETWORK_SRC     = $(SRC_DIR)/run_network.f90
 
 NETWORK_LIB_SRC = $(VEHICLE_SRC) $(NETWORK_SRC) $(NETWORK_INIT_SRC) \
-                  $(LANE_CHANGE_SRC) $(JUNCTION_SRC) $(NS_MODEL_SRC) $(NET_SIM_SRC)
+                  $(LANE_CHANGE_SRC) $(JUNCTION_SRC) $(TASEP_SRC) $(NS_MODEL_SRC) \
+                  $(NET_SIM_SRC)
 
 # PDE source files (pde_flux and pde_lanechange must precede pde_module due to USE deps)
 PDE_FLUX_SRC = $(SRC_DIR)/pde_flux.f90
@@ -41,9 +43,17 @@ PDE_LC_SRC   = $(SRC_DIR)/pde_lanechange.f90
 PDE_MOD_SRC  = $(SRC_DIR)/pde_module.f90
 PDE_DRV_SRC  = $(SRC_DIR)/pde_driver.f90
 
+# Fundamental-diagram sweep.
+# Single source file containing both ``fundamental_diagram_mod`` (measurement
+# + NetCDF I/O, reusing the network primitives on a minimal 1-lane
+# road_network_t) and the ``fd_sweep`` driver program. Shares the NetCDF
+# ``check`` helper with network_io_mod.
+FD_SRC          = $(SRC_DIR)/fundamental_diagram.f90
+
 # Executables
 PDE_EXE               = $(BUILD_DIR)/pde_solver
 RUN_NETWORK_EXE       = $(BUILD_DIR)/run_network
+FD_SWEEP_EXE          = $(BUILD_DIR)/fd_sweep
 
 # Default simulation parameters (override: make run L=50 ALPHA=0.3 BETA=0.7)
 L       ?= 10
@@ -65,7 +75,7 @@ PDE_VLIMIT ?= 1.0
 PDE_OUT    ?= data/output/pde_simulation.nc
 
 # Default target: build all executables
-all: run_network pde
+all: run_network pde fd_sweep
 
 # Build PDE solver
 $(PDE_EXE): $(PDE_FLUX_SRC) $(PDE_LC_SRC) $(PDE_MOD_SRC) $(PDE_DRV_SRC)
@@ -83,6 +93,19 @@ run-pde: $(PDE_EXE)
 run_network: $(RUN_NETWORK_EXE)
 
 $(RUN_NETWORK_EXE): $(NETWORK_LIB_SRC) $(NETWORK_BUILDER_SRC) $(NC_CONFIG_SRC) $(NETWORK_IO_SRC) $(RUN_NETWORK_SRC)
+	mkdir -p $(BUILD_DIR)
+	$(FC) $(FFLAGS) -J$(BUILD_DIR) $^ -o $@ $(NC_FLIBS)
+
+# Fundamental-diagram sweep driver (open-boundary 1D TASEP + periodic-ring NS).
+# Drives the existing network TASEP/NS step routines on a 1-lane network, so
+# it pulls in road_network, network_init, tasep, NS_model and network_io
+# (for the shared NetCDF ``check`` helper). Junctions / lane-change /
+# network_simulation are not needed.
+fd_sweep: $(FD_SWEEP_EXE)
+
+$(FD_SWEEP_EXE): $(VEHICLE_SRC) $(NETWORK_SRC) $(NETWORK_INIT_SRC) \
+                 $(TASEP_SRC) $(NS_MODEL_SRC) $(NETWORK_IO_SRC) \
+                 $(FD_SRC)
 	mkdir -p $(BUILD_DIR)
 	$(FC) $(FFLAGS) -J$(BUILD_DIR) $^ -o $@ $(NC_FLIBS)
 
