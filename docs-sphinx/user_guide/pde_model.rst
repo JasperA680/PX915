@@ -22,16 +22,6 @@ uniform spatial grid and advances time with an explicit Euler step subject to
 a CFL stability condition.
 
 
-Building the solver
--------------------
-
-.. code-block:: bash
-
-   make
-
-This compiles the Fortran source and places the binary at ``build/pde_solver``.
-
-
 Running the solver
 ------------------
 

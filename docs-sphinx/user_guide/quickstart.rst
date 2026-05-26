@@ -11,30 +11,9 @@ The project contains two main types of model:
 * a continuum PDE model, including single-lane and multilane LWR traffic-flow
   solvers.
 
-From the project root directory, activate the Python virtual environment:
-
-.. code-block:: bash
-
-   source .venv/bin/activate
-
-If the dependencies have not already been installed, install them with:
-
-.. code-block:: bash
-
-   pip install -r requirements.txt
-
-Building the Fortran code
--------------------------
-
-The Fortran simulation code can be built from the project root using:
-
-.. code-block:: bash
-
-   make
-
-This should compile the Fortran modules and produce the relevant executable
-programs. If the build fails, check that a Fortran compiler such as ``gfortran``
-is available.
+Before running anything, make sure you have followed the steps in
+:doc:`installation` to clone the repo, install Python dependencies, and build
+the Fortran binaries.
 
 Running a 1D cellular automaton simulation
 ------------------------------------------
