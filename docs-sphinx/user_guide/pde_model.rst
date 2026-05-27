@@ -178,3 +178,86 @@ diagram from the NetCDF output:
    python scripts/run_pde_model.py --scenario riemann_shock --save
 
 Plots are saved to ``plots/``.
+
+
+Performance tuning
+------------------
+
+**Choosing M and N_STEPS**
+
+Higher ``M`` gives sharper shock fronts but increases runtime linearly.  For
+quick exploratory runs ``M = 100``, ``N_STEPS = 300`` is sufficient.  For
+production quality results — particularly fundamental diagram sweeps or
+speed-limit comparisons — use ``M = 200`` and ``N_STEPS ≥ 500``.
+
+The CFL condition links spatial and temporal resolution: doubling ``M`` roughly
+doubles the number of time steps needed to reach the same physical end time,
+so total cost scales as M².  Keep this in mind when increasing resolution.
+
+**Choosing the flux scheme**
+
+``godunov`` is the recommended default.  It resolves shocks without numerical
+smearing and costs roughly 1.5× more per step than ``lf``.
+
+``lf`` (Lax–Friedrichs) adds artificial diffusion proportional to the wave
+speed.  It is useful when you want a fast qualitative sweep or when the initial
+condition is very smooth, but it noticeably smears sharp shock fronts at typical
+resolutions.
+
+**Fundamental diagram sweeps**
+
+The Python sweep in ``analysis.pde_fundamental_diagram`` runs one solver
+invocation per density point.  For a sweep with ``n_points = 20``, expect
+roughly 40 solver calls.  Use ``n_steps = 2000`` with ``burnin_frac = 0.5``
+to ensure the solver reaches steady state before measurement.  Reducing
+``n_points`` to 10 halves the sweep time with only a small loss of resolution
+in the diagram.
+
+**Multilane runs**
+
+Each additional lane scales the Fortran solver cost approximately linearly.
+For two-lane runs the overhead is modest; beyond four lanes, consider reducing
+``M`` to keep interactive response times acceptable.
+
+
+Limitations
+-----------
+
+**Dimensionless units**
+
+All quantities (density, velocity, flux) are dimensionless and normalised so
+that ``RHO_MAX = 1`` and ``V_MAX = 1`` by default.  Mapping to physical units
+requires independent calibration of free-flow speed and jam density for the
+road of interest.
+
+**Homogeneous traffic only**
+
+The LWR model tracks a single vehicle class.  Heterogeneous traffic (e.g. a
+mix of cars and trucks with different ``v_max`` values) is not supported; all
+vehicles share the same Greenshields or Newell closure.
+
+**No on-ramps or off-ramps in the 1D solver**
+
+The single-lane solver treats the road as a closed segment with open or
+periodic boundaries.  Merging or diverging flows require the network model
+(``build/run_network``), which handles junctions through probabilistic routing
+matrices.
+
+**Open boundary artefacts**
+
+With ``BC_TYPE = open``, the prescribed boundary densities are held fixed for
+all time.  If the initial interior state is far from the boundary values, a
+transient boundary layer forms at startup.  Discard an appropriate burn-in
+period before measuring steady-state quantities.
+
+**Speed limit as a hard velocity cap**
+
+The ``V_LIMIT`` parameter applies a hard pointwise cap on the Greenshields
+velocity.  This is a macroscopic approximation; it does not model variable
+speed limits, enforcement zones, or reaction-time effects.
+
+**Numerical diffusion at coarse resolution**
+
+Even with the Godunov scheme, sharp shocks are spread over 2–3 cells.
+Increasing ``M`` reduces this smearing but does not eliminate it entirely — the
+scheme is first-order accurate in space.

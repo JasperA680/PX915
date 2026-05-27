@@ -6,3 +6,4 @@ Developer guide
 
    numerical_methods
    parallelisation
+   extending
