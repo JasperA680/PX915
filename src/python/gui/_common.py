@@ -18,6 +18,39 @@ BIG_INT = 2_000_000_000
 BIG_FLOAT = 1e12
 
 
+# Stylesheet applied to QScrollArea instances that wrap the parameter forms.
+# macOS auto-hides native scrollbars regardless of ScrollBarAlwaysOn, so the
+# scrollbar can't act as a "there is more below" cue. Applying any
+# QScrollBar stylesheet kicks Qt off the native macOS style and onto its own
+# renderer, which honours AlwaysOn properly. The visual is a slim neutral-grey
+# bar that fades darker on hover.
+ALWAYS_VISIBLE_SCROLLBAR_QSS = """
+QScrollBar:vertical {
+    background: rgba(0, 0, 0, 0.04);
+    width: 10px;
+    margin: 0;
+    border-radius: 5px;
+}
+QScrollBar::handle:vertical {
+    background: rgba(0, 0, 0, 0.30);
+    min-height: 24px;
+    border-radius: 5px;
+}
+QScrollBar::handle:vertical:hover {
+    background: rgba(0, 0, 0, 0.50);
+}
+QScrollBar::add-line:vertical,
+QScrollBar::sub-line:vertical {
+    height: 0;
+    background: none;
+}
+QScrollBar::add-page:vertical,
+QScrollBar::sub-page:vertical {
+    background: none;
+}
+"""
+
+
 def set_button_stale(button: QPushButton, base_label: str, stale: bool) -> None:
     """Style ``button`` to signal whether its last-produced output is stale.
 

@@ -19,7 +19,7 @@ from python.gui.network_widget import NetworkWidget
 from python.gui.plot_panel import PlotPanel
 from python.gui.road_edit_dialog import RoadEditDialog, JunctionEditDialog
 from python.gui.runners import RunnerThread, FDSweepThread
-from python.gui._common import set_button_stale
+from python.gui._common import set_button_stale, ALWAYS_VISIBLE_SCROLLBAR_QSS
 from python.gui._run_tab import RunTab
 
 
@@ -123,6 +123,14 @@ class CATab(RunTab):
         form_scroll.setWidgetResizable(True)
         form_scroll.setMaximumHeight(340)
         form_scroll.setFrameShape(QScrollArea.NoFrame)
+        # Keep the vertical scrollbar visible at all times so users get a
+        # static visual cue that the form has more content below the fold.
+        # macOS auto-hides native scrollbars regardless of ScrollBarAlwaysOn;
+        # applying *any* QScrollBar stylesheet switches Qt off the native
+        # style and onto its own renderer, which honours AlwaysOn properly.
+        form_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOn)
+        form_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        form_scroll.setStyleSheet(ALWAYS_VISIBLE_SCROLLBAR_QSS)
 
         self.network_widget = NetworkWidget()
         self.network_widget.setMinimumSize(360, 360)

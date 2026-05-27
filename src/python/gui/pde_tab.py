@@ -16,6 +16,7 @@ from python.gui.pde_param_form import PDEParamForm, PRESETS_ORDER, CUSTOM_LABEL
 from python.gui.pde_plot_panel import PDEPlotPanel
 from python.gui.runners import PDERunnerThread
 from python.gui._run_tab import RunTab
+from python.gui._common import ALWAYS_VISIBLE_SCROLLBAR_QSS
 
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -61,6 +62,14 @@ class PDETab(RunTab):
         form_scroll.setWidgetResizable(True)
         form_scroll.setMaximumHeight(440)
         form_scroll.setFrameShape(QScrollArea.NoFrame)
+        # Keep the vertical scrollbar visible at all times so users get a
+        # static visual cue that the form has more content below the fold.
+        # macOS auto-hides native scrollbars regardless of ScrollBarAlwaysOn;
+        # applying a QScrollBar stylesheet kicks Qt off the native style so
+        # AlwaysOn is actually honoured.
+        form_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOn)
+        form_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        form_scroll.setStyleSheet(ALWAYS_VISIBLE_SCROLLBAR_QSS)
 
         left = QWidget()
         left_layout = QVBoxLayout(left)
