@@ -2,6 +2,7 @@ numpy>=2.0
 matplotlib>=3.9
 netCDF4>=1.7
 PyQt5>=5.15
+ipykernel>=6.31.0
 
 # Documentation
 sphinx>=7.0
