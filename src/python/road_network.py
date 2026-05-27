@@ -456,7 +456,8 @@ def town(L: int = 15, alpha: float = 0.35, beta: float = 0.5,
          p_left: float = 0.25, p_right: float = 0.25) -> Tuple[NetworkSpec, LayoutSpec]:
     """2x2 grid of crossroads with 8 external arms.
 
-    Layout (unit spacing):
+    Layout (unit spacing)::
+
         J1 (0,1)  -- R1 -- J2 (1,1)
           |                  |
          R2                 R3

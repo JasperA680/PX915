@@ -100,38 +100,6 @@ Output NetCDF files are written under ``data/output/gui/`` (CA) and
 ``data/output/gui_pde/`` (PDE); the bottom-of-window log dock streams the
 solver's progress and prints per-road steady-state diagnostics on completion.
 
-Building the documentation
---------------------------
-
-The Sphinx documentation can be built from the ``docs-sphinx`` directory:
-
-.. code-block:: bash
-
-   cd docs-sphinx
-   make clean
-   make html
-
-The rendered documentation can then be opened with:
-
-.. code-block:: bash
-
-   open _build/html/index.html
-
-On Linux, use:
-
-.. code-block:: bash
-
-   xdg-open _build/html/index.html
-
-or start a local server:
-
-.. code-block:: bash
-
-   cd _build/html
-   python3 -m http.server 8000
-
-and open ``http://localhost:8000`` in a web browser.
-
 Where to go next
 ----------------
 
