@@ -5,6 +5,9 @@ A dual-model traffic flow simulator implementing both a microscopic cellular aut
 The computational core is written in Fortran for performance, with a Python frontend providing visualisation, a PyQt5 GUI, and a Jupyter tutorial.
 
 ---
+## Tutorial
+After successful intallation find the tutorial .ipynb at PX915/notebooks/tutorial.ipynb.
+---
 
 ## Features
 
@@ -37,7 +40,7 @@ python3 ./scripts/run_gui.py                        # Open the GUI
 ```
 ---
 
-## Repository Structure - MIGHT NEED CHANGING
+## Repository Structure
 
 ```
 PX915/
