@@ -41,8 +41,7 @@ cd PX915
 python3 -m venv .venv                               # Create a virtual environment
 source .venv/bin/activate           # macOS / Linux
 # .venv\Scripts\activate            # Windows
-pip install -r requirements.txt                     # Install python dependencies
-make                                                # Compile Fortran binaries
+make                                                # Install Python deps, register Jupyter kernel, compile Fortran binaries
 python3 ./scripts/run_gui.py                        # Open the GUI
 ```
 ---
@@ -83,7 +82,7 @@ PX915/
 | matplotlib | 3.9 |
 | netCDF4 | 1.7 |
 | PyQt5 | 5.15 |
-| ipykernal | 6.31.0 |
+| ipykernel | 6.31.0 |
 
 Optional (documentation only): `sphinx>=7.0`, `sphinx-fortran>=1.1`, `sphinx-rtd-theme>=2.0`
 

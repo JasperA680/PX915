@@ -48,8 +48,7 @@
 <li class="toctree-l2 current"><a class="current reference internal" href="#">Installation</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="#prerequisites">Prerequisites</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#getting-the-code">Getting the code</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#installing-python-dependencies">Installing Python dependencies</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#building-the-fortran-solver">Building the Fortran solver</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#building-and-installing">Building and installing</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#verifying-the-installation">Verifying the installation</a></li>
 </ul>
 </li>
@@ -138,18 +137,27 @@ package from the C library and is easy to miss.</p>
 </pre></div>
 </div>
 </section>
-<section id="installing-python-dependencies">
-<h2>Installing Python dependencies<a class="headerlink" href="#installing-python-dependencies" title="Link to this heading"></a></h2>
-<p>Create and activate a virtual environment, then install the package and its
-dependencies in one step:</p>
+<section id="building-and-installing">
+<h2>Building and installing<a class="headerlink" href="#building-and-installing" title="Link to this heading"></a></h2>
+<p>Create and activate a virtual environment, then run <code class="docutils literal notranslate"><span class="pre">make</span></code> from the
+repository root:</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>python3<span class="w"> </span>-m<span class="w"> </span>venv<span class="w"> </span>.venv
 <span class="nb">source</span><span class="w"> </span>.venv/bin/activate<span class="w">   </span><span class="c1"># macOS / Linux</span>
 <span class="c1"># .venv\Scripts\activate    # Windows</span>
 
-pip<span class="w"> </span>install<span class="w"> </span>-e<span class="w"> </span>.
+make
 </pre></div>
 </div>
-<p>This installs:</p>
+<p>The default <code class="docutils literal notranslate"><span class="pre">make</span></code> target runs three steps in order:</p>
+<ol class="arabic simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">pip</span> <span class="pre">install</span> <span class="pre">-r</span> <span class="pre">requirements.txt</span></code> — install Python dependencies into
+the active environment;</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">python</span> <span class="pre">-m</span> <span class="pre">ipykernel</span> <span class="pre">install</span> <span class="pre">--user</span> <span class="pre">--name=px915</span></code> — register a Jupyter
+kernel called <em>Python (PX915)</em> so <code class="docutils literal notranslate"><span class="pre">tutorial.ipynb</span></code> can find the
+interpreter on a fresh machine;</p></li>
+<li><p>compile the Fortran executables into <code class="docutils literal notranslate"><span class="pre">build/</span></code>.</p></li>
+</ol>
+<p>Python packages installed by step 1:</p>
 <table class="docutils align-default">
 <colgroup>
 <col style="width: 30.0%" />
@@ -173,16 +181,12 @@ pip<span class="w"> </span>install<span class="w"> </span>-e<span class="w"> </s
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">PyQt5</span></code></p></td>
 <td><p>Graphical user interface for running simulations interactively</p></td>
 </tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">ipykernel</span></code></p></td>
+<td><p>Lets the Jupyter tutorial find the venv’s Python interpreter</p></td>
+</tr>
 </tbody>
 </table>
-</section>
-<section id="building-the-fortran-solver">
-<h2>Building the Fortran solver<a class="headerlink" href="#building-the-fortran-solver" title="Link to this heading"></a></h2>
-<p>From the repository root:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>make
-</pre></div>
-</div>
-<p>This compiles all executables and places them in <code class="docutils literal notranslate"><span class="pre">build/</span></code>:</p>
+<p>Step 3 produces the following binaries in <code class="docutils literal notranslate"><span class="pre">build/</span></code>:</p>
 <table class="docutils align-default">
 <colgroup>
 <col style="width: 35.0%" />

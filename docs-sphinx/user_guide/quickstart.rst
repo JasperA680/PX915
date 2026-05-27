@@ -12,8 +12,9 @@ The project contains two main types of model:
   solvers.
 
 Before running anything, make sure you have followed the steps in
-:doc:`installation` to clone the repo, install Python dependencies, and build
-the Fortran binaries.
+:doc:`installation` to clone the repo and run ``make``, which installs the
+Python dependencies, registers the Jupyter kernel, and builds the Fortran
+binaries in a single step.
 
 Running a 1D cellular automaton simulation
 ------------------------------------------

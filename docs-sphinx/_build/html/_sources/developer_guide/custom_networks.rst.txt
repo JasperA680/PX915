@@ -11,7 +11,7 @@ non-preset network can be assembled with confidence.
 
 For a step-by-step worked example, see *Section 5: Custom Network —
 Asymmetric Y-Junction* in the tutorial notebook
-(``notebooks/tutorial.ipynb``).
+(``tutorial.ipynb``).
 
 
 The four-layer data model

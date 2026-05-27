@@ -74,8 +74,18 @@ PDE_BC     ?= open
 PDE_VLIMIT ?= 1.0
 PDE_OUT    ?= data/output/pde_simulation.nc
 
-# Default target: build all executables
-all: run_network pde fd_sweep
+# Default target: full setup + build all executables
+all: setup run_network pde fd_sweep
+
+# Python environment setup: install requirements and register a Jupyter
+# kernel pointing at the active interpreter so `tutorial.ipynb` can find it.
+# Run with the target venv activated (or PYTHON= pointing at it). pip is
+# idempotent so re-running this on an up-to-date venv is a no-op.
+PYTHON ?= python3
+
+setup:
+	$(PYTHON) -m pip install -r requirements.txt
+	$(PYTHON) -m ipykernel install --user --name=px915 --display-name "Python (PX915)"
 
 # Build PDE solver
 $(PDE_EXE): $(PDE_FLUX_SRC) $(PDE_LC_SRC) $(PDE_MOD_SRC) $(PDE_DRV_SRC)

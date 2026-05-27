@@ -57,10 +57,11 @@ Clone the repository:
    cd PX915
 
 
-Installing Python dependencies
--------------------------------
+Building and installing
+-----------------------
 
-Create and activate a virtual environment, then install the dependencies:
+Create and activate a virtual environment, then run ``make`` from the
+repository root:
 
 .. code-block:: bash
 
@@ -68,9 +69,18 @@ Create and activate a virtual environment, then install the dependencies:
    source .venv/bin/activate   # macOS / Linux
    # .venv\Scripts\activate    # Windows
 
-   pip install -r requirements.txt
+   make
 
-This installs:
+The default ``make`` target runs three steps in order:
+
+#. ``pip install -r requirements.txt`` — install Python dependencies into
+   the active environment;
+#. ``python -m ipykernel install --user --name=px915`` — register a Jupyter
+   kernel called *Python (PX915)* so ``tutorial.ipynb`` can find the
+   interpreter on a fresh machine;
+#. compile the Fortran executables into ``build/``.
+
+Python packages installed by step 1:
 
 .. list-table::
    :header-rows: 1
@@ -86,18 +96,10 @@ This installs:
      - Reading simulation output files written by the Fortran solver
    * - ``PyQt5``
      - Graphical user interface for running simulations interactively
+   * - ``ipykernel``
+     - Lets the Jupyter tutorial find the venv's Python interpreter
 
-
-Building the Fortran solver
-----------------------------
-
-From the repository root:
-
-.. code-block:: bash
-
-   make
-
-This compiles all executables and places them in ``build/``:
+Step 3 produces the following binaries in ``build/``:
 
 .. list-table::
    :header-rows: 1
