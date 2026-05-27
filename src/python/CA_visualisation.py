@@ -4,6 +4,23 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 from matplotlib.collections import LineCollection
+from matplotlib.colors import LinearSegmentedColormap
+
+# Occupancy colormap: warm colors compressed into the low end (where most
+# road occupancies sit), cool colors stretched across the rest. Makes small
+# differences in light traffic visually obvious.
+_TRAFFIC_CMAP = LinearSegmentedColormap.from_list(
+    "traffic_occupancy",
+    [
+        (0.00, "red"),
+        (0.10, "orange"),
+        (0.22, "yellow"),
+        (0.36, "lime"),
+        (0.52, "green"),
+        (0.74, "skyblue"),
+        (1.00, "blue"),
+    ],
+)
 
 
 def plot_spacetime(data, ax=None, title=None):
@@ -213,7 +230,7 @@ def _draw_network(ax, road_endpoints, junction_xy,
         segs = [list(road_endpoints[rid]) for rid in rid_list]
         if road_colours is not None:
             colours = np.array([road_colours.get(rid, 0.0) for rid in rid_list])
-            lc = LineCollection(segs, cmap='viridis', linewidths=4)
+            lc = LineCollection(segs, cmap=_TRAFFIC_CMAP, linewidths=4)
             lc.set_array(colours)
             lc.set_clim(0, 1)
             ax.add_collection(lc)
@@ -329,7 +346,7 @@ def _draw_roads_multilane(ax, road_endpoints, road_lane_info, lane_spacing):
             )
 
     if has_colours:
-        lc = LineCollection(segs_all, cmap='viridis', linewidths=3)
+        lc = LineCollection(segs_all, cmap=_TRAFFIC_CMAP, linewidths=3)
         lc.set_array(np.array(colour_vals))
         lc.set_clim(0, 1)
         ax.add_collection(lc)
