@@ -145,8 +145,8 @@ Visualising multilane output
 
 .. code-block:: bash
 
-   python scripts/run_multilane_pde.py --scenario D_fast_slow --save
+   python scripts/run_multilane_pde.py --save
 
-Available scenarios are ``A`` through ``F``; plots are saved to ``plots/``.
+Omit ``--scenario`` to run all scenarios, or pass a letter prefix to run one.
 The space–time panel shows density in each lane as a function of time at the
 domain mid-point, making it straightforward to observe equilibration.

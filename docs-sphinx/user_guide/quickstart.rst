@@ -108,6 +108,9 @@ For a user-facing explanation of the continuum traffic model, see
 
 For the multilane extension, see :doc:`multilane_pde`.
 
+For the cellular automaton models (TASEP, Nagel–Schreckenberg, lane changing,
+and road networks), see :doc:`ca_model`.
+
 For implementation details, see :doc:`../developer_guide/numerical_methods`.
 
 For automatically generated API documentation, see :doc:`../api/index`.

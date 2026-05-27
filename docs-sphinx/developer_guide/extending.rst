@@ -170,7 +170,7 @@ so no extra GUI code is needed.
 
    from python.road_network import my_network
    spec, layout = my_network()
-   print(f"{len(spec['roads'])} roads, {len(spec['junctions'])} junctions")
+   print(f"{len(spec.roads)} roads, {len(spec.junctions)} junctions")
 
 
 Code style conventions

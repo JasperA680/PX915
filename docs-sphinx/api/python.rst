@@ -40,8 +40,9 @@ Simulation runner module
 The ``run_simulation`` module is the Python-side launcher for the Fortran network
 driver.  ``run_simulation`` serialises a ``NetworkSpec`` + ``SimParams`` pair to
 a NetCDF config file, invokes the compiled ``run_network`` binary as a
-subprocess, and returns a ``NetworkResult``.  ``write_config`` exposes the
-config-writing step independently for inspection or pre-staging.
+subprocess, and returns the ``Path`` to the output NetCDF file.
+``write_config`` exposes the config-writing step independently for inspection
+or pre-staging.
 
 .. automodule:: python.run_simulation
    :members:

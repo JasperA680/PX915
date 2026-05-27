@@ -177,7 +177,6 @@ diagram from the NetCDF output:
 
    python scripts/run_pde_model.py --scenario riemann_shock --save
 
-Plots are saved to ``plots/``.
 
 
 Performance tuning

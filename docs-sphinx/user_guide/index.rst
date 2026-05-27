@@ -8,3 +8,4 @@ User guide
    quickstart
    pde_model
    multilane_pde
+   ca_model
