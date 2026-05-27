@@ -114,7 +114,7 @@ it in ``PRESETS``.
 **Step 1 — write the preset function**
 
 Follow the signature and return types of an existing preset such as
-``t_junction`` (line ~203):
+``t_junction`` (line ~266):
 
 .. code-block:: python
 

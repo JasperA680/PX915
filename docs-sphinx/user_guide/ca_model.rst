@@ -196,6 +196,13 @@ Seven network presets are provided in :mod:`python.road_network`:
    * - ``town``
      - 2 × 2 grid of crossroads with eight external entry arms.
 
+For topologies not covered by a preset, any network can be assembled by
+hand from the :class:`~python.road_network.LaneSpec`,
+:class:`~python.road_network.RoadSpec`, and
+:class:`~python.road_network.JunctionSpec` dataclasses directly — see
+:doc:`../developer_guide/custom_networks` for the full wiring rules and a
+worked Y-junction example.
+
 A **T-junction** example: with ``p_through = 0.6``, 60 % of westbound traffic
 continues straight to the East arm and 40 % diverts down the South stem.
 Southbound traffic splits evenly (50 % West, 50 % East).  Road 3 (stem) therefore
