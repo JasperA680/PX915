@@ -60,6 +60,8 @@ PX915/
 
 Optional (documentation only): `sphinx>=7.0`, `sphinx-fortran>=1.1`, `sphinx-rtd-theme>=2.0`
 
+Further information about prerequisites and dealing with issues can be found in the docs, under `User Guide/Installation/Prerequisites`.
+
 ---
 
 ## Documentation
@@ -69,7 +71,7 @@ Build the Sphinx HTML docs:
 ```bash
 cd docs-sphinx
 make clean && make html         # Removes any existing files and makes the docs
-Open _build/html/index.html     # Opens the docs in a browser
+open _build/html/index.html     # Opens the docs in a browser
 ```
 
 Physics background (Markdown): !! IS THIS STILL NEEDED
