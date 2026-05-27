@@ -7,7 +7,7 @@ The computational core is written in Fortran for performance, with a Python fron
 ---
 ## Tutorial & Documentation
 
-After successful installation find the `tutorial.ipynb` at `PX915/notebooks/tutorial.ipynb`.
+After successful installation find the `tutorial.ipynb` at `PX915/tutorial.ipynb`.
 
 Docs can be opened with:
 ```bash
