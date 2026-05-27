@@ -27,6 +27,7 @@ plots/
 PROGRESS.md
 
 # Python
+*.egg-info/
 .venv/
 src/PX915env/
 __pycache__/
