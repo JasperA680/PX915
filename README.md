@@ -5,9 +5,14 @@ A dual-model traffic flow simulator implementing both a microscopic cellular aut
 The computational core is written in Fortran for performance, with a Python frontend providing visualisation, a PyQt5 GUI, and a Jupyter tutorial.
 
 ---
-## Tutorial
+## Tutorial & Documentation
 
-After successful installation find the `tutorial.ipynb` at `PX915/notebooks/tutorial.ipynb`.
+After successful installation find the `tutorial.ipynb` at `PX915/tutorial.ipynb`.
+
+Docs can be opened with:
+```bash
+open docs-sphinx/_build/html/index.html
+```
 
 ---
 
@@ -79,22 +84,11 @@ PX915/
 | matplotlib | 3.9 |
 | netCDF4 | 1.7 |
 | PyQt5 | 5.15 |
+| ipykernal | 6.31.0 |
 
 Optional (documentation only): `sphinx>=7.0`, `sphinx-fortran>=1.1`, `sphinx-rtd-theme>=2.0`
 
 Further information about prerequisites and dealing with issues can be found in the docs, under `User Guide/Installation/Prerequisites`.
-
----
-
-## Documentation
-
-Build the Sphinx HTML docs:
-
-```bash
-cd docs-sphinx
-make clean && make html         # Removes any existing files and makes the docs
-open _build/html/index.html     # Opens the docs in a browser
-```
 
 ---
 
