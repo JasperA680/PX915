@@ -1,6 +1,6 @@
 # PX915 — Traffic Flow Simulator
 
-A dual-model traffic flow simulator combining a **microscopic cellular automaton** (Nagel–Schreckenberg / TASEP) with a **macroscopic continuum PDE** (Lighthill–Whitham–Richards). The project is aimed at research and coursework in computational physics.
+A dual-model traffic flow simulator implementing both a microscopic cellular automaton model (Nagel–Schreckenberg / TASEP) and a macroscopic continuum PDE model (Lighthill–Whitham–Richards). The project is aimed at research and coursework in computational physics.
 
 The computational core is written in Fortran for performance, with a Python frontend providing visualisation, a PyQt5 GUI, and a Jupyter tutorial.
 
