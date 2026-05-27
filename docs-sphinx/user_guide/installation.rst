@@ -71,12 +71,6 @@ dependencies in one step:
 
    pip install -e .
 
-To also install the optional documentation-building dependencies:
-
-.. code-block:: bash
-
-   pip install -e ".[docs]"
-
 This installs:
 
 .. list-table::
@@ -93,8 +87,6 @@ This installs:
      - Reading simulation output files written by the Fortran solver
    * - ``PyQt5``
      - Graphical user interface for running simulations interactively
-   * - ``sphinx``, ``sphinx-fortran``, ``sphinx-rtd-theme``
-     - Building this documentation (optional, installed with ``.[docs]``)
 
 
 Building the Fortran solver
