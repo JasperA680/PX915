@@ -60,7 +60,8 @@ Clone the repository:
 Installing Python dependencies
 -------------------------------
 
-Create and activate a virtual environment, then install the dependencies:
+Create and activate a virtual environment, then install the package and its
+dependencies in one step:
 
 .. code-block:: bash
 
@@ -68,7 +69,13 @@ Create and activate a virtual environment, then install the dependencies:
    source .venv/bin/activate   # macOS / Linux
    # .venv\Scripts\activate    # Windows
 
-   pip install -r requirements.txt
+   pip install -e .
+
+To also install the optional documentation-building dependencies:
+
+.. code-block:: bash
+
+   pip install -e ".[docs]"
 
 This installs:
 
@@ -87,7 +94,7 @@ This installs:
    * - ``PyQt5``
      - Graphical user interface for running simulations interactively
    * - ``sphinx``, ``sphinx-fortran``, ``sphinx-rtd-theme``
-     - Building this documentation (optional)
+     - Building this documentation (optional, installed with ``.[docs]``)
 
 
 Building the Fortran solver
