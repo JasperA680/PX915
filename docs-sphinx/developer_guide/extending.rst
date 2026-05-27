@@ -105,6 +105,12 @@ preset returns a ``(NetworkSpec, LayoutSpec)`` tuple and is registered in the
 ``PRESETS`` dict at the bottom of the file so the GUI and runner can find it by
 name.
 
+For the data model and wiring rules a preset builder needs to satisfy
+(lane flow direction, junction legs, routing matrices, perimeter ports),
+see :doc:`custom_networks`. Promoting a one-off custom topology to a
+preset is mostly a matter of wrapping it in a function and registering
+it in ``PRESETS``.
+
 **Step 1 — write the preset function**
 
 Follow the signature and return types of an existing preset such as

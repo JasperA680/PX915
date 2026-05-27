@@ -6,4 +6,5 @@ Developer guide
 
    numerical_methods
    parallelisation
+   custom_networks
    extending
