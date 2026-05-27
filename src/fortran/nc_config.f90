@@ -7,19 +7,20 @@ module nc_config_mod
     ! turn into a runtime ``road_network_t``. Variable and attribute names
     ! mirror the output-side schema used by ``network_io_mod``.
     !
-    ! On-disk schema (current version 1):
+    ! What's in a config NetCDF:
     !
-    ! * **Global attributes** — ``schema_version``, ``n_steps``, ``dt``,
-    !   ``v_max``, ``p_slow``, ``rng_seed``, ``max_lane_length``, ``model``,
-    !   ``lc_model``, ``lc_p_change``, ``n_junctions`` (disambiguates a real
-    !   zero-junction network from the one-slot sentinel NetCDF needs to
-    !   make a non-empty dimension).
+    ! * **Global attributes** — the simulation-wide knobs: ``n_steps``,
+    !   ``dt``, ``v_max``, ``p_slow``, ``rng_seed``, ``max_lane_length``,
+    !   ``model``, ``lc_model``, ``lc_p_change``. Also ``n_junctions``
+    !   (the real number of junctions; useful because the on-disk
+    !   ``junction`` dimension is always at least one, so a network with
+    !   no junctions still has a one-row sentinel in the tables below).
     ! * **Per-road**: ``road_id``, ``road_end_junction``.
     ! * **Per-lane**: ``lane_road_id``, ``lane_within_road``,
     !   ``lane_length``, ``lane_flow_direction``, ``lane_alpha``,
-    !   ``lane_beta``, ``lane_open_in``, ``lane_open_out``, plus the
-    !   optional ``lane_is_periodic`` and ``lane_n_vehicles`` added after
-    !   schema v1 for periodic-NS support.
+    !   ``lane_beta``, ``lane_open_in``, ``lane_open_out``, and the
+    !   optional ``lane_is_periodic`` / ``lane_n_vehicles`` added when
+    !   periodic-NS support was wired through the Python pipeline.
     ! * **Per-junction**: ``junction_id``, ``junction_n_in``,
     !   ``junction_n_out``, ``junction_inleg_offset``,
     !   ``junction_outleg_offset``, ``junction_route_offset``.
@@ -27,10 +28,10 @@ module nc_config_mod
     !   ``junction_in_lane``, ``junction_in_perim``, ``junction_out_road``,
     !   ``junction_out_lane``, ``junction_out_perim``, ``junction_route_prob``.
     !
-    ! Optional per-lane fields added after schema v1 are read via
-    ! ``read_*_1d_opt`` helpers that fall back to a caller-initialised
-    ! default when the variable is absent, so NetCDFs written by older
-    ! Python frontends keep loading without error.
+    ! The two optional per-lane fields are read via ``read_*_1d_opt``
+    ! helpers that fall back to a caller-initialised default when the
+    ! variable is absent, so NetCDFs written by older Python frontends
+    ! keep loading without error.
 
     use netcdf
     use network_builder_mod
