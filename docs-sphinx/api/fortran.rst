@@ -18,7 +18,7 @@ Cellular automata models
 ~~~~~~~~~~~~~~
 
 The ``tasep_model`` module contains the one-dimensional open-boundary TASEP
-cellular automaton model. It defines the update rules for one step of the 
+cellular automaton model. It defines the update rules for one step of the
 model, and the boundary entrance/exit rules.
 
 .. f:autosrcfile:: tasep.f90
