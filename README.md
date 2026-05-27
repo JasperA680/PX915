@@ -15,8 +15,26 @@ The computational core is written in Fortran for performance, with a Python fron
 - **Fundamental diagram sweeps** — OpenMP-parallelised steady-state α/β sweeps for TASEP and NS
 - **Interactive PyQt5 GUI** — real-time parameter editing, live simulation progress, and tabbed result visualisation
 - **NetCDF I/O** — configs and results stored as self-describing `.nc` files
-- **Sphinx API documentation** and physics notes
+- **API documentation** - Detailed information for both users and developers
 
+---
+
+## Installation
+
+It is highly reccomended to read through the README and to refer to the Documentation for a clean installation.
+
+However, for the most impatient of users (and those with `gfortran`, `netcdf`, and `Python >= 3.9`), the easiest way to jump straight into the software package is as follows:
+
+```bash
+git clone https://github.com/JasperA680/PX915.git   # Copy the repo locally
+cd PX915    
+python3 -m venv .venv                               # Create a virtual environment
+source .venv/bin/activate           # macOS / Linux
+# .venv\Scripts\activate            # Windows
+pip install -r requirements.txt                     # Install python dependencies
+make                                                # Compile Fortran binaries
+python3 ./scripts/run_gui.py                        # Open the GUI
+```
 ---
 
 ## Repository Structure - MIGHT NEED CHANGING
@@ -32,13 +50,12 @@ PX915/
 ├── scripts/                  # Standalone runners and plotters
 ├── notebooks/
 │   └── tutorial.ipynb        # Interactive tutorial
-├── tests/                    # Unit and integration tests
 ├── docs-sphinx/              # Sphinx documentation source
-├── docs/                     # Markdown physics notes
 ├── data/
 │   ├── input/                # Example input files
 │   └── output/               # Simulation results (NetCDF)
-└── plots/                    # Reference figures
+└── tests/                    # UNSTABLE - Unit and integration tests
+
 ```
 
 ---
@@ -49,7 +66,7 @@ PX915/
 - `gfortran` with OpenMP support
 - NetCDF-Fortran and NetCDF-C libraries (located via `nf-config` and `nc-config`)
 
-**Python ≥ 3.10**
+**Python ≥ 3.9**
 
 | Package | Minimum version |
 |---------|----------------|
@@ -73,20 +90,6 @@ cd docs-sphinx
 make clean && make html         # Removes any existing files and makes the docs
 open _build/html/index.html     # Opens the docs in a browser
 ```
-
-Physics background (Markdown): !! IS THIS STILL NEEDED
-
-| File | Content |
-|------|---------|
-| `docs/pde_model.md` | LWR continuum model and Greenshields flux |
-| `docs/multilane_pde_model.md` | Multi-lane PDE with lane-change coupling |
-| `docs/1d_toy_model.md` | TASEP and Nagel–Schreckenberg introduction |
-
----
-
-## Installation
-
-Please find a thorough installation guide in the documentation, under `User guide/Installation`.
 
 ---
 
@@ -132,3 +135,9 @@ from python.io import load_network_netcdf      # CA network results
 from python.pde_runner import load_pde_netcdf  # PDE results
 from python.fd_runner import load_fd_netcdf    # Fundamental diagram sweeps
 ```
+
+---
+
+## Tests
+
+The folder `PX915/tests/` contains a number of test files, in both Fortran and Python, and a Makefile to help build them. **These files should be considered unstable and not be used by regular users.** They are included as they may be helpful for developers with a thorough understanding of the code.
