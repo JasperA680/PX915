@@ -542,10 +542,11 @@ def town(L: int = 15, alpha: float = 0.35, beta: float = 0.5,
 
 
 PRESETS = {
-    "single_lane": single_lane,
-    "two_lane":    two_lane,
-    "t_junction":  t_junction,
-    "crossroads":  crossroads,
-    "roundabout":  roundabout,
-    "town":        town,
+    "single_lane":          single_lane,
+    "single_lane_periodic": single_lane_periodic,
+    "two_lane":             two_lane,
+    "t_junction":           t_junction,
+    "crossroads":           crossroads,
+    "roundabout":           roundabout,
+    "town":                 town,
 }
