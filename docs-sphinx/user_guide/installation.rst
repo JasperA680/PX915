@@ -60,8 +60,7 @@ Clone the repository:
 Installing Python dependencies
 -------------------------------
 
-Create and activate a virtual environment, then install the package and its
-dependencies in one step:
+Create and activate a virtual environment, then install the dependencies:
 
 .. code-block:: bash
 
@@ -69,7 +68,7 @@ dependencies in one step:
    source .venv/bin/activate   # macOS / Linux
    # .venv\Scripts\activate    # Windows
 
-   pip install -e .
+   pip install -r requirements.txt
 
 This installs:
 
