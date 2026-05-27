@@ -41,7 +41,7 @@ cd PX915
 python3 -m venv .venv                               # Create a virtual environment
 source .venv/bin/activate           # macOS / Linux
 # .venv\Scripts\activate            # Windows
-pip install -e                                      # Install python dependencies
+pip install -r requirements.txt                     # Install python dependencies
 make                                                # Compile Fortran binaries
 python3 ./scripts/run_gui.py                        # Open the GUI
 ```
