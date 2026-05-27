@@ -44,8 +44,33 @@ module fundamental_diagram_mod
     public :: measure_steady_state_tasep
     public :: measure_steady_state_ns
     public :: write_fd_netcdf
+    public :: seed_iter_rng
 
 contains
+
+    subroutine seed_iter_rng(base_seed, i, branch)
+        ! Deterministically seed the current thread's RNG state for one
+        ! independent sweep iteration. Called at the top of every iteration
+        ! of the OpenMP-parallelised sweep loops so that the output is
+        ! identical regardless of how the loop iterations are scheduled
+        ! across threads. Within an iteration, ``random_number`` runs on
+        ! the calling thread's private RNG state (gfortran's RNG is
+        ! per-thread under OpenMP).
+        integer, intent(in) :: base_seed, i, branch
+
+        integer :: n_seed, k
+        integer, allocatable :: seed_array(:)
+
+        call random_seed(size=n_seed)
+        allocate(seed_array(n_seed))
+        do k = 1, n_seed
+            seed_array(k) = base_seed + 1009 * i + 7919 * branch + 37 * k
+        end do
+        call random_seed(put=seed_array)
+        deallocate(seed_array)
+    end subroutine seed_iter_rng
+
+
 
     subroutine measure_steady_state_tasep(L, n_burnin, n_measure, alpha, beta, &
                                           mean_density, mean_current)
@@ -299,7 +324,11 @@ program fd_sweep
 
     if (nargs >= 8) then
         call get_command_argument(8, arg);  read(arg, *) seed_val
-        call set_rng_seed(seed_val)
+    else
+        ! Wall-clock fallback so an un-seeded sweep still varies between runs;
+        ! per-iteration seeding below makes the output bit-reproducible for any
+        ! fixed seed_val regardless of OpenMP thread count.
+        call system_clock(count=seed_val)
     end if
 
     select case (trim(model))
@@ -321,26 +350,39 @@ program fd_sweep
         ! adds no noise. Bulk density tracks alpha/(1 + alpha) and the LD
         ! branch closes off at (0.5, 0.5) when alpha = 1, recovering the
         ! textbook J = min(rho, 1 - rho) shape.
+        !
+        ! Each iteration is an independent steady-state measurement, so the
+        ! sweep parallelises trivially. Per-iteration RNG seeding makes the
+        ! output bit-identical to the serial run regardless of how the loop
+        ! is scheduled.
         beta = 1.0
+        !$omp parallel do default(shared) private(i, alpha, mean_rho, mean_J) &
+        !$omp& schedule(dynamic)
         do i = 1, n_points
+            call seed_iter_rng(seed_val, i, 1)
             alpha = 0.02 + (0.96 / real(n_points - 1)) * real(i - 1)
             call measure_steady_state_tasep(L, n_burnin, n_steps, alpha, beta, &
                                             mean_rho, mean_J)
             rho(i) = mean_rho
             J(i)   = mean_J
         end do
+        !$omp end parallel do
 
         ! Beta branch: symmetric — deterministic injection (alpha = 1) so
         ! the left boundary adds no noise, tracing the HD line back from
         ! rho ~ 1 to the same (0.5, 0.5) max-current point.
         alpha = 1.0
+        !$omp parallel do default(shared) private(i, beta, mean_rho, mean_J) &
+        !$omp& schedule(dynamic)
         do i = 1, n_points
+            call seed_iter_rng(seed_val, i, 2)
             beta = 0.02 + (0.96 / real(n_points - 1)) * real(i - 1)
             call measure_steady_state_tasep(L, n_burnin, n_steps, alpha, beta, &
                                             mean_rho, mean_J)
             rho(n_points + i) = mean_rho
             J(n_points + i)   = mean_J
         end do
+        !$omp end parallel do
 
     case ('NS')
         ! NS relaxes much faster than TASEP near criticality; the Python
@@ -357,7 +399,11 @@ program fd_sweep
         print '(A,I9)',   '  n_burnin  =', n_burnin
         print '(A,I6)',   '  n_measure =', n_steps
 
+        !$omp parallel do default(shared) &
+        !$omp& private(i, target_rho, n_vehicles, mean_rho, mean_J) &
+        !$omp& schedule(dynamic)
         do i = 1, n_points
+            call seed_iter_rng(seed_val, i, 3)
             target_rho = 0.02 + (0.96 / real(n_points - 1)) * real(i - 1)
             n_vehicles = max(1, nint(target_rho * real(L)))
             call measure_steady_state_ns(L, n_burnin, n_steps, n_vehicles, &
@@ -365,6 +411,7 @@ program fd_sweep
             rho(i) = mean_rho
             J(i)   = mean_J
         end do
+        !$omp end parallel do
 
     case default
         print '(A,A)', 'fd_sweep: unknown model ', trim(model)
@@ -375,22 +422,5 @@ program fd_sweep
                          v_max, p_slow, rho, J)
     print '(A,A)', '  done. wrote ', trim(outfile)
     deallocate(rho, J)
-
-contains
-
-    subroutine set_rng_seed(s)
-        ! Reseed the Fortran intrinsic RNG so the sweep is reproducible.
-        integer, intent(in) :: s
-        integer :: n_seed, k
-        integer, allocatable :: seed_array(:)
-
-        call random_seed(size=n_seed)
-        allocate(seed_array(n_seed))
-        do k = 1, n_seed
-            seed_array(k) = s + 37 * k
-        end do
-        call random_seed(put=seed_array)
-        deallocate(seed_array)
-    end subroutine set_rng_seed
 
 end program fd_sweep

@@ -2,12 +2,17 @@ Parallelisation
 ===============
 
 This page outlines how parallelisation could be added to the traffic-flow
-simulation code as a future development.
+simulation code as a future development. One subsystem — the
+fundamental-diagram sweep — has already been parallelised with OpenMP
+because it sits at the easy end of the spectrum (independent measurements
+with no shared state); the rest of the code is still serial.
 
-At present, the code is primarily written as a serial implementation. This makes
-the update rules easier to validate and keeps the model behaviour transparent.
-Parallelisation would be an additional performance feature rather than a core
-part of the current implementation.
+At present, the network simulator (``run_network``), the PDE solver, and
+the cellular automaton update rules themselves are written as serial
+implementations. This makes the update rules easier to validate and keeps
+the model behaviour transparent. Parallelisation of those components would
+be an additional performance feature rather than a core part of the
+current implementation.
 
 Motivation
 ----------
@@ -19,6 +24,45 @@ validation tests or uncertainty studies.
 
 The main aim of any future parallel implementation should be to improve runtime
 without changing the physical model or the numerical results.
+
+Fundamental-diagram sweep (implemented)
+---------------------------------------
+
+The fundamental-diagram sweep driver (``build/fd_sweep``, source
+``src/fortran/fundamental_diagram.f90``) is parallelised with OpenMP. The
+sweep runs ``n_points`` (TASEP: ``2 * n_points``, alpha and beta branches)
+independent steady-state measurements, each of which builds its own
+single-lane ``road_network_t`` and calls ``measure_steady_state_tasep`` or
+``measure_steady_state_ns``. The measurement subroutines touch no global
+state — every allocation lives on the calling thread's local
+``road_network_t`` — so the outer ``do i = 1, n_points`` loops parallelise
+directly with ``!$omp parallel do``.
+
+The only subtlety is the random number generator. The Fortran intrinsic
+``random_number`` has per-thread state under gfortran's OpenMP runtime,
+so the calls themselves are thread-safe, but the *output* of a sweep
+depends on which RNG state each iteration sees. To make the result
+bit-identical across thread counts, the driver re-seeds the calling
+thread's RNG state at the top of every iteration with a deterministic
+function of ``(seed, i, branch)`` (see
+``fundamental_diagram_mod::seed_iter_rng``). Each iteration then runs
+with its own private, reproducible random stream.
+
+The build is one flag: ``-fopenmp`` on the ``fd_sweep`` recipe in the
+top-level ``Makefile``. On macOS the system clang doesn't ship libomp,
+but this project's gfortran (``hyperspy-bundle``, GCC 13.4) ships its own
+OpenMP runtime, so no extra setup is required.
+
+At the time of writing, on an 8-core M-series Mac, a single TASEP sweep
+at ``L = 300, n_points = 20, n_steps = 3000`` runs in 1.79 s on one
+thread and 0.31 s on eight (5.8x speedup; the high-end superlinearity
+comes from better L1 / L2 fit per worker on small networks).
+
+The scaling and bit-identity properties are checked by
+``tests/test_fd_openmp_scaling.py``, which runs the sweep at
+``OMP_NUM_THREADS = 1`` and ``OMP_NUM_THREADS = min(4, cpu_count)``,
+asserts byte-equal NetCDF outputs for both TASEP and NS, and requires a
+>= 1.5x wall-clock speedup on the parallel run.
 
 Cellular automaton models
 -------------------------

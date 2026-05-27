@@ -101,13 +101,21 @@ $(RUN_NETWORK_EXE): $(NETWORK_LIB_SRC) $(NETWORK_BUILDER_SRC) $(NC_CONFIG_SRC) $
 # it pulls in road_network, network_init, tasep, NS_model and network_io
 # (for the shared NetCDF ``check`` helper). Junctions / lane-change /
 # network_simulation are not needed.
+#
+# Built with -fopenmp: the two TASEP sweep loops (alpha and beta branches)
+# and the NS density sweep are wrapped in !$omp parallel do. Each iteration
+# is a self-contained steady-state measurement on its own road_network_t,
+# and gfortran's random_number state is per-thread, so the only thing the
+# parallel region needs is per-iteration RNG seeding (which the program
+# already does via fundamental_diagram_mod::seed_iter_rng for bit-identical
+# results across thread counts).
 fd_sweep: $(FD_SWEEP_EXE)
 
 $(FD_SWEEP_EXE): $(VEHICLE_SRC) $(NETWORK_SRC) $(NETWORK_INIT_SRC) \
                  $(TASEP_SRC) $(NS_MODEL_SRC) $(NETWORK_IO_SRC) \
                  $(FD_SRC)
 	mkdir -p $(BUILD_DIR)
-	$(FC) $(FFLAGS) -J$(BUILD_DIR) $^ -o $@ $(NC_FLIBS)
+	$(FC) $(FFLAGS) -fopenmp -J$(BUILD_DIR) $^ -o $@ $(NC_FLIBS)
 
 # Clean build files
 clean:
