@@ -57,9 +57,8 @@ PX915/
 │   ├── fortran/              # 21 Fortran source files (CA, PDE, FD sweep)
 │   └── python/               # Python modules + PyQt5 GUI
 │       └── gui/              # GUI application
+├── tutorial.ipynb            # Interactive tutorial
 ├── scripts/                  # Standalone runners and plotters
-├── notebooks/
-│   └── tutorial.ipynb        # Interactive tutorial
 ├── docs-sphinx/              # Sphinx documentation source
 ├── data/
 │   ├── input/                # Example input files
@@ -110,7 +109,7 @@ The window has two tabs:
 ### Jupyter Tutorial
 
 ```bash
-jupyter notebook notebooks/tutorial.ipynb
+jupyter notebook tutorial.ipynb
 ```
 
 Covers LWR theory, Riemann problems, fundamental diagrams, multi-lane extensions, and cellular automaton models with live plots.
