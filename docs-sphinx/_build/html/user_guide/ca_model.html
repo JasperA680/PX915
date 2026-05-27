@@ -1,0 +1,524 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Cellular automaton traffic models &mdash; PX915 Traffic Flow Modelling 0.1.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=9edc463e" />
+
+  
+      <script src="../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../_static/documentation_options.js?v=01f34227"></script>
+      <script src="../_static/doctools.js?v=9a2dae69"></script>
+      <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
+      <script async="async" src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <script src="../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="Developer guide" href="../developer_guide/index.html" />
+    <link rel="prev" title="Multilane PDE model" href="multilane_pde.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../index.html" class="icon icon-home">
+            PX915 Traffic Flow Modelling
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">User guide:</span></p>
+<ul class="current">
+<li class="toctree-l1 current"><a class="reference internal" href="index.html">User guide</a><ul class="current">
+<li class="toctree-l2"><a class="reference internal" href="installation.html">Installation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="quickstart.html">Quickstart</a></li>
+<li class="toctree-l2"><a class="reference internal" href="pde_model.html">PDE traffic-flow model</a></li>
+<li class="toctree-l2"><a class="reference internal" href="multilane_pde.html">Multilane PDE model</a></li>
+<li class="toctree-l2 current"><a class="current reference internal" href="#">Cellular automaton traffic models</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#the-tasep-model">The TASEP model</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#the-nagelschreckenberg-model">The Nagel–Schreckenberg model</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#lane-changing">Lane changing</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#road-network-simulation">Road-network simulation</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#running-the-simulator">Running the simulator</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#parameters">Parameters</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#visualising-the-output">Visualising the output</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#limitations">Limitations</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Developer guide:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../developer_guide/index.html">Developer guide</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">API reference:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../api/index.html">API reference</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">PX915 Traffic Flow Modelling</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="index.html">User guide</a></li>
+      <li class="breadcrumb-item active">Cellular automaton traffic models</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../_sources/user_guide/ca_model.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="cellular-automaton-traffic-models">
+<h1>Cellular automaton traffic models<a class="headerlink" href="#cellular-automaton-traffic-models" title="Link to this heading"></a></h1>
+<p>Cellular automaton (CA) models take a different approach to traffic flow from
+the LWR PDE.  Instead of treating traffic as a continuous fluid, they represent
+individual vehicles as discrete particles on a lattice, updated in parallel at
+each integer time step.</p>
+<p>Two CA models are implemented: the <strong>TASEP</strong> (Totally Asymmetric Simple
+Exclusion Process) and the <strong>Nagel–Schreckenberg (NS)</strong> model.  Both are driven
+by the same Fortran network simulator (<code class="docutils literal notranslate"><span class="pre">build/run_network</span></code>) and share the same
+road-network infrastructure: multi-lane roads, junction routing, and the optional
+lane-change sub-step.</p>
+<section id="the-tasep-model">
+<h2>The TASEP model<a class="headerlink" href="#the-tasep-model" title="Link to this heading"></a></h2>
+<p>The TASEP is the minimal open-boundary lattice gas.  The road is divided into
+<span class="math notranslate nohighlight">\(L\)</span> sites, each either occupied (<span class="math notranslate nohighlight">\(1\)</span>) or empty (<span class="math notranslate nohighlight">\(0\)</span>).  At
+every time step all sites are updated simultaneously in three stages:</p>
+<ol class="arabic simple">
+<li><p><strong>Exit:</strong> if site <span class="math notranslate nohighlight">\(L\)</span> is occupied, the vehicle leaves with probability
+<span class="math notranslate nohighlight">\(\beta\)</span>.</p></li>
+<li><p><strong>Hop:</strong> each vehicle at sites <span class="math notranslate nohighlight">\(1, \ldots, L-1\)</span> moves one step forward
+if the next site is empty.</p></li>
+<li><p><strong>Entry:</strong> if site <span class="math notranslate nohighlight">\(1\)</span> is empty, a new vehicle enters with probability
+<span class="math notranslate nohighlight">\(\alpha\)</span>.</p></li>
+</ol>
+<p>These three rules produce three macroscopically distinct steady states depending
+on the inflow rate <span class="math notranslate nohighlight">\(\alpha\)</span> and outflow rate <span class="math notranslate nohighlight">\(\beta\)</span>:</p>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 20.0%" />
+<col style="width: 20.0%" />
+<col style="width: 20.0%" />
+<col style="width: 40.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Phase</p></th>
+<th class="head"><p>Condition</p></th>
+<th class="head"><p>Bulk density</p></th>
+<th class="head"><p>Character</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>Low density (LD)</p></td>
+<td><p><span class="math notranslate nohighlight">\(\alpha &lt; \beta\)</span>,<span class="math notranslate nohighlight">\(\alpha &lt; \tfrac{1}{2}\)</span></p></td>
+<td><p><span class="math notranslate nohighlight">\(\rho \approx \alpha\)</span></p></td>
+<td><p>Sparse diagonal streaks; inflow is the bottleneck</p></td>
+</tr>
+<tr class="row-odd"><td><p>Maximum current (MC)</p></td>
+<td><p><span class="math notranslate nohighlight">\(\alpha &gt; \tfrac{1}{2}\)</span>,<span class="math notranslate nohighlight">\(\beta &gt; \tfrac{1}{2}\)</span></p></td>
+<td><p><span class="math notranslate nohighlight">\(\rho \approx 0.5\)</span></p></td>
+<td><p>Dense, fluctuating; domain walls diffuse across the lattice</p></td>
+</tr>
+<tr class="row-even"><td><p>High density (HD)</p></td>
+<td><p><span class="math notranslate nohighlight">\(\beta &lt; \alpha\)</span>,<span class="math notranslate nohighlight">\(\beta &lt; \tfrac{1}{2}\)</span></p></td>
+<td><p><span class="math notranslate nohighlight">\(\rho \approx 1 - \beta\)</span></p></td>
+<td><p>Dense jams; outflow is the bottleneck</p></td>
+</tr>
+</tbody>
+</table>
+<p>All three phases share the same fundamental diagram</p>
+<div class="math notranslate nohighlight">
+\[J(\rho) = \min(\rho,\; 1 - \rho),\]</div>
+<p>a triangle whose peak <span class="math notranslate nohighlight">\(J_\text{max} = 0.5\)</span> is reached at
+<span class="math notranslate nohighlight">\(\rho = 0.5\)</span>.  The two straight-line branches arise from the
+deterministic bulk parallel update — at half-filling the lattice settles into
+an alternating “X O X O” pattern in which every car hops every step.</p>
+</section>
+<section id="the-nagelschreckenberg-model">
+<h2>The Nagel–Schreckenberg model<a class="headerlink" href="#the-nagelschreckenberg-model" title="Link to this heading"></a></h2>
+<p>The NS model extends TASEP by giving each vehicle an integer velocity
+<span class="math notranslate nohighlight">\(v \in \{0, 1, \ldots, v_\text{max}\}\)</span>.  Its four parallel update rules
+model human driving behaviour more realistically:</p>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 20.0%" />
+<col style="width: 80.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Step</p></th>
+<th class="head"><p>Rule</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><strong>Accelerate</strong></p></td>
+<td><p><span class="math notranslate nohighlight">\(v \leftarrow \min(v + 1,\ v_\text{max})\)</span></p></td>
+</tr>
+<tr class="row-odd"><td><p><strong>Brake</strong></p></td>
+<td><p><span class="math notranslate nohighlight">\(v \leftarrow \min(v,\ d - 1)\)</span>, where <span class="math notranslate nohighlight">\(d\)</span> is the gap to the
+next vehicle</p></td>
+</tr>
+<tr class="row-even"><td><p><strong>Randomise</strong></p></td>
+<td><p>with probability <span class="math notranslate nohighlight">\(p_\text{slow}\)</span>:
+<span class="math notranslate nohighlight">\(v \leftarrow \max(v - 1,\ 0)\)</span></p></td>
+</tr>
+<tr class="row-odd"><td><p><strong>Move</strong></p></td>
+<td><p>vehicle advances <span class="math notranslate nohighlight">\(v\)</span> sites</p></td>
+</tr>
+</tbody>
+</table>
+<p>The randomisation step is the key difference from TASEP.  Even at low densities
+(<span class="math notranslate nohighlight">\(\rho \ll 1\)</span>), if <span class="math notranslate nohighlight">\(p_\text{slow} &gt; 0\)</span> a single random deceleration
+propagates backward through following vehicles and amplifies into a self-sustaining
+<strong>phantom jam</strong> — a density wave travelling upstream at roughly one site per step
+with no external cause.</p>
+<p>Phantom jams appear reliably above a critical density</p>
+<div class="math notranslate nohighlight">
+\[\rho_c = \frac{1}{v_\text{max} + 1}.\]</div>
+<p>For the defaults <span class="math notranslate nohighlight">\(v_\text{max} = 5\)</span>,<span class="math notranslate nohighlight">\(p_\text{slow} = 0.2\)</span>,
+this gives <span class="math notranslate nohighlight">\(\rho_c \approx 0.17\)</span>.</p>
+<p>The NS fundamental diagram differs markedly from the TASEP triangle:</p>
+<ul class="simple">
+<li><p><strong>Free-flow branch</strong> (<span class="math notranslate nohighlight">\(\rho &lt; \rho_c\)</span>): roughly linear rise — each
+additional vehicle contributes <span class="math notranslate nohighlight">\(\approx v_\text{max}\)</span> moves per step.</p></li>
+<li><p><strong>Congested branch</strong> (<span class="math notranslate nohighlight">\(\rho &gt; \rho_c\)</span>): steep decline with the
+characteristic backward-wave signature of phantom jams.</p></li>
+<li><p><strong>Peak flux</strong> is lower than TASEP’s <span class="math notranslate nohighlight">\(J = 0.5\)</span> and the maximum shifts
+to <span class="math notranslate nohighlight">\(\rho_c &lt; 0.5\)</span>.</p></li>
+</ul>
+<p>The NS model is run on a <strong>periodic ring</strong> (<code class="docutils literal notranslate"><span class="pre">is_periodic</span> <span class="pre">=</span> <span class="pre">True</span></code> on the lane)
+for the fundamental diagram sweep, so there is no boundary bias.  Use the
+<code class="docutils literal notranslate"><span class="pre">single_lane_periodic</span></code> preset to reproduce this geometry.</p>
+</section>
+<section id="lane-changing">
+<h2>Lane changing<a class="headerlink" href="#lane-changing" title="Link to this heading"></a></h2>
+<p>The lane-change module (<code class="docutils literal notranslate"><span class="pre">lane_change.f90</span></code>) applies a sub-step before each NS
+update.  A vehicle considers switching to an adjacent lane only when all four
+conditions hold:</p>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 15.0%" />
+<col style="width: 85.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Condition</p></th>
+<th class="head"><p>Description</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><strong>T1</strong> — blocked</p></td>
+<td><p>Gap ahead in the current lane <span class="math notranslate nohighlight">\(&lt; v + 1\)</span> (cannot reach full speed)</p></td>
+</tr>
+<tr class="row-odd"><td><p><strong>T2</strong> — target ahead clear</p></td>
+<td><p>Gap ahead in the target lane <span class="math notranslate nohighlight">\(&gt; v + 1\)</span></p></td>
+</tr>
+<tr class="row-even"><td><p><strong>T3</strong> — target behind clear</p></td>
+<td><p>Gap behind in the target lane <span class="math notranslate nohighlight">\(&gt; v_\text{max}\)</span></p></td>
+</tr>
+<tr class="row-odd"><td><p><strong>T4</strong> — random acceptance</p></td>
+<td><p>Uniform draw <span class="math notranslate nohighlight">\(&lt; p_\text{change}\)</span></p></td>
+</tr>
+</tbody>
+</table>
+<p>Two lane-change modes are available, selected via <code class="docutils literal notranslate"><span class="pre">lc_model</span></code> in
+<code class="xref py py-class docutils literal notranslate"><span class="pre">SimParams</span></code>:</p>
+<dl class="simple">
+<dt><code class="docutils literal notranslate"><span class="pre">lc_model</span> <span class="pre">=</span> <span class="pre">0</span></code> (symmetric)</dt><dd><p>Both adjacent lanes are considered equally.  A vehicle changes to whichever
+valid target satisfies T1–T4.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">lc_model</span> <span class="pre">=</span> <span class="pre">1</span></code> (asymmetric)</dt><dd><p>Vehicles prefer the rightmost lane and only move left if it satisfies T1–T4,
+returning to the right as soon as the right lane is clear.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">lc_model</span> <span class="pre">=</span> <span class="pre">-1</span></code> (disabled)</dt><dd><p>No lane changes; each lane evolves independently (the default).</p>
+</dd>
+</dl>
+<p>With symmetric lane changing enabled, blocked vehicles escape jammed lanes by
+switching, which reduces peak jam density in either lane and slightly increases
+mean throughput.  The two lanes become correlated: a dense patch in one lane
+produces a transient shadow in the other as vehicles simultaneously leave the
+jammed lane and occupy the clear one.</p>
+</section>
+<section id="road-network-simulation">
+<h2>Road-network simulation<a class="headerlink" href="#road-network-simulation" title="Link to this heading"></a></h2>
+<p>The Fortran binary supports arbitrary road networks: multiple roads connected at
+junctions, each with a routing probability table specifying where vehicles go on
+exit, and right-of-way rules to resolve simultaneous crossing conflicts.</p>
+<p><strong>Junction right-of-way</strong> is evaluated geometrically: each vehicle crossing a
+junction is assigned a perimeter position on the junction boundary.  Two movements
+conflict if their chord segments on the perimeter intersect (a left turn across an
+oncoming straight-through movement, for example).  Conflicting movements are
+resolved stochastically — one is allowed to proceed and the other waits.</p>
+<p>Seven network presets are provided in <code class="xref py py-mod docutils literal notranslate"><span class="pre">python.road_network</span></code>:</p>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 25.0%" />
+<col style="width: 75.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Preset</p></th>
+<th class="head"><p>Description</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">single_lane</span></code></p></td>
+<td><p>One road, one open-boundary lane.  Baseline for TASEP / NS runs.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">single_lane_periodic</span></code></p></td>
+<td><p>One road, one closed-ring NS lane, seeded with a fixed vehicle count.
+Used for the fundamental-diagram NS sweep.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">two_lane</span></code></p></td>
+<td><p>One road, two same-direction lanes.  Lane-change baseline.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">t_junction</span></code></p></td>
+<td><p>Three roads meeting at a T: West arm, East arm, and South stem.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">crossroads</span></code></p></td>
+<td><p>Four-arm crossroads; richer conflict patterns than the T-junction.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">roundabout</span></code></p></td>
+<td><p>Four T-junctions arranged in a clockwise ring.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">town</span></code></p></td>
+<td><p>2 × 2 grid of crossroads with eight external entry arms.</p></td>
+</tr>
+</tbody>
+</table>
+<p>For topologies not covered by a preset, any network can be assembled by
+hand from the <code class="xref py py-class docutils literal notranslate"><span class="pre">LaneSpec</span></code>,
+<code class="xref py py-class docutils literal notranslate"><span class="pre">RoadSpec</span></code>, and
+<code class="xref py py-class docutils literal notranslate"><span class="pre">JunctionSpec</span></code> dataclasses directly — see
+<a class="reference internal" href="../developer_guide/custom_networks.html"><span class="doc">Defining a custom road network</span></a> for the full wiring rules and a
+worked Y-junction example.</p>
+<p>A <strong>T-junction</strong> example: with <code class="docutils literal notranslate"><span class="pre">p_through</span> <span class="pre">=</span> <span class="pre">0.6</span></code>, 60 % of westbound traffic
+continues straight to the East arm and 40 % diverts down the South stem.
+Southbound traffic splits evenly (50 % West, 50 % East).  Road 3 (stem) therefore
+receives roughly 1.8× the load of a single arm and will show the highest mean
+density in the density time-series panel.</p>
+</section>
+<section id="running-the-simulator">
+<h2>Running the simulator<a class="headerlink" href="#running-the-simulator" title="Link to this heading"></a></h2>
+<p>The simulator is driven through the Python API.  Import the preset builders and
+the <a class="reference internal" href="../api/python.html#python.run_simulation.run_simulation" title="python.run_simulation.run_simulation"><code class="xref py py-func docutils literal notranslate"><span class="pre">run_simulation()</span></code></a> function:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">python.road_network</span><span class="w"> </span><span class="kn">import</span> <span class="n">single_lane</span><span class="p">,</span> <span class="n">SimParams</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">python.run_simulation</span><span class="w"> </span><span class="kn">import</span> <span class="n">run_simulation</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">python.io</span><span class="w"> </span><span class="kn">import</span> <span class="n">load_network_netcdf</span>
+
+<span class="n">spec</span><span class="p">,</span> <span class="n">layout</span> <span class="o">=</span> <span class="n">single_lane</span><span class="p">(</span><span class="n">L</span><span class="o">=</span><span class="mi">100</span><span class="p">,</span> <span class="n">alpha</span><span class="o">=</span><span class="mf">0.3</span><span class="p">,</span> <span class="n">beta</span><span class="o">=</span><span class="mf">0.8</span><span class="p">)</span>
+<span class="n">params</span> <span class="o">=</span> <span class="n">SimParams</span><span class="p">(</span><span class="n">n_steps</span><span class="o">=</span><span class="mi">400</span><span class="p">,</span> <span class="n">model</span><span class="o">=</span><span class="s1">&#39;TASEP&#39;</span><span class="p">,</span> <span class="n">v_max</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">p_slow</span><span class="o">=</span><span class="mf">0.0</span><span class="p">,</span> <span class="n">rng_seed</span><span class="o">=</span><span class="mi">42</span><span class="p">)</span>
+
+<span class="n">nc_path</span> <span class="o">=</span> <span class="n">run_simulation</span><span class="p">(</span><span class="n">spec</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="n">layout</span><span class="p">,</span> <span class="n">output_dir</span><span class="o">=</span><span class="s1">&#39;data/output/run1&#39;</span><span class="p">,</span>
+                         <span class="n">binary</span><span class="o">=</span><span class="s1">&#39;build/run_network&#39;</span><span class="p">)</span>
+<span class="n">result</span>  <span class="o">=</span> <span class="n">load_network_netcdf</span><span class="p">(</span><span class="n">nc_path</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>For the NS phantom-jam demo on a periodic ring:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">python.road_network</span><span class="w"> </span><span class="kn">import</span> <span class="n">single_lane_periodic</span><span class="p">,</span> <span class="n">SimParams</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">python.run_simulation</span><span class="w"> </span><span class="kn">import</span> <span class="n">run_simulation</span>
+
+<span class="n">spec</span><span class="p">,</span> <span class="n">layout</span> <span class="o">=</span> <span class="n">single_lane_periodic</span><span class="p">(</span><span class="n">L</span><span class="o">=</span><span class="mi">200</span><span class="p">,</span> <span class="n">n_vehicles</span><span class="o">=</span><span class="mi">40</span><span class="p">)</span>
+<span class="n">params</span> <span class="o">=</span> <span class="n">SimParams</span><span class="p">(</span><span class="n">n_steps</span><span class="o">=</span><span class="mi">600</span><span class="p">,</span> <span class="n">model</span><span class="o">=</span><span class="s1">&#39;NS&#39;</span><span class="p">,</span> <span class="n">v_max</span><span class="o">=</span><span class="mi">5</span><span class="p">,</span> <span class="n">p_slow</span><span class="o">=</span><span class="mf">0.3</span><span class="p">,</span> <span class="n">rng_seed</span><span class="o">=</span><span class="mi">42</span><span class="p">)</span>
+
+<span class="n">nc_path</span> <span class="o">=</span> <span class="n">run_simulation</span><span class="p">(</span><span class="n">spec</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="n">layout</span><span class="p">,</span> <span class="n">output_dir</span><span class="o">=</span><span class="s1">&#39;data/output/ring&#39;</span><span class="p">,</span>
+                         <span class="n">binary</span><span class="o">=</span><span class="s1">&#39;build/run_network&#39;</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>To run a fundamental-diagram sweep across the full density range:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">python.fd_runner</span><span class="w"> </span><span class="kn">import</span> <span class="n">run_fd_sweep</span><span class="p">,</span> <span class="n">load_fd_netcdf</span>
+
+<span class="n">nc</span> <span class="o">=</span> <span class="n">run_fd_sweep</span><span class="p">(</span><span class="n">model</span><span class="o">=</span><span class="s1">&#39;NS&#39;</span><span class="p">,</span> <span class="n">L</span><span class="o">=</span><span class="mi">100</span><span class="p">,</span> <span class="n">n_points</span><span class="o">=</span><span class="mi">25</span><span class="p">,</span> <span class="n">n_steps</span><span class="o">=</span><span class="mi">1500</span><span class="p">,</span>
+                  <span class="n">v_max</span><span class="o">=</span><span class="mi">5</span><span class="p">,</span> <span class="n">p_slow</span><span class="o">=</span><span class="mf">0.2</span><span class="p">,</span> <span class="n">seed</span><span class="o">=</span><span class="mi">42</span><span class="p">,</span>
+                  <span class="n">output_path</span><span class="o">=</span><span class="s1">&#39;data/output/fd_ns.nc&#39;</span><span class="p">)</span>
+<span class="n">fd</span> <span class="o">=</span> <span class="n">load_fd_netcdf</span><span class="p">(</span><span class="n">nc</span><span class="p">)</span>
+<span class="n">rho</span><span class="p">,</span> <span class="n">J</span> <span class="o">=</span> <span class="n">fd</span><span class="p">[</span><span class="s1">&#39;rho&#39;</span><span class="p">],</span> <span class="n">fd</span><span class="p">[</span><span class="s1">&#39;J&#39;</span><span class="p">]</span>
+</pre></div>
+</div>
+<p>The TASEP sweep traces two deterministic-boundary cuts: <span class="math notranslate nohighlight">\(\alpha\)</span> swept
+with <span class="math notranslate nohighlight">\(\beta = 1\)</span> (LD branch) then <span class="math notranslate nohighlight">\(\beta\)</span> swept with <span class="math notranslate nohighlight">\(\alpha
+= 1\)</span> (HD branch).  The NS sweep drives a periodic ring at each target density
+and measures the mean flow after a burn-in period.</p>
+</section>
+<section id="parameters">
+<h2>Parameters<a class="headerlink" href="#parameters" title="Link to this heading"></a></h2>
+<p><code class="xref py py-class docutils literal notranslate"><span class="pre">SimParams</span></code> controls the simulation:</p>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 20.0%" />
+<col style="width: 45.0%" />
+<col style="width: 15.0%" />
+<col style="width: 20.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Parameter</p></th>
+<th class="head"><p>Description</p></th>
+<th class="head"><p>Default</p></th>
+<th class="head"><p>Typical range</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">n_steps</span></code></p></td>
+<td><p>Number of time steps</p></td>
+<td><p>2000</p></td>
+<td><p>300 – 5000</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">dt</span></code></p></td>
+<td><p>Nominal time-step size (informational only; CA time is discrete)</p></td>
+<td><p>1.0</p></td>
+<td><p>—</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">v_max</span></code></p></td>
+<td><p>Maximum integer velocity (NS only; set to 1 for TASEP-like behaviour)</p></td>
+<td><p>5</p></td>
+<td><p>1 – 5</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">p_slow</span></code></p></td>
+<td><p>Randomisation probability (NS only; 0 disables phantom jams)</p></td>
+<td><p>0.2</p></td>
+<td><p>0.0 – 0.5</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">rng_seed</span></code></p></td>
+<td><p>Random seed for reproducibility</p></td>
+<td><p>42</p></td>
+<td><p>any integer</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">model</span></code></p></td>
+<td><p>Update rule: <code class="docutils literal notranslate"><span class="pre">'NS'</span></code> or <code class="docutils literal notranslate"><span class="pre">'TASEP'</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">'NS'</span></code></p></td>
+<td><p>—</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">lc_model</span></code></p></td>
+<td><p>Lane-change mode: <code class="docutils literal notranslate"><span class="pre">-1</span></code> disabled, <code class="docutils literal notranslate"><span class="pre">0</span></code> symmetric, <code class="docutils literal notranslate"><span class="pre">1</span></code> asymmetric</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">-1</span></code></p></td>
+<td><p>—</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">lc_p_change</span></code></p></td>
+<td><p>Probability of accepting a valid lane-change opportunity</p></td>
+<td><p>1.0</p></td>
+<td><p>0.0 – 1.0</p></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="visualising-the-output">
+<h2>Visualising the output<a class="headerlink" href="#visualising-the-output" title="Link to this heading"></a></h2>
+<p>Load the NetCDF result with <a class="reference internal" href="../api/python.html#python.io.load_network_netcdf" title="python.io.load_network_netcdf"><code class="xref py py-func docutils literal notranslate"><span class="pre">load_network_netcdf()</span></code></a>, then use the
+visualisation helpers in <code class="xref py py-mod docutils literal notranslate"><span class="pre">python.CA_visualisation</span></code>:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">python.io</span><span class="w"> </span><span class="kn">import</span> <span class="n">load_network_netcdf</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">python.CA_visualisation</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+    <span class="n">plot_network_spacetime</span><span class="p">,</span>
+    <span class="n">plot_network_layout</span><span class="p">,</span>
+    <span class="n">plot_network_density</span><span class="p">,</span>
+    <span class="n">plot_fundamental_diagram</span><span class="p">,</span>
+<span class="p">)</span>
+
+<span class="n">result</span> <span class="o">=</span> <span class="n">load_network_netcdf</span><span class="p">(</span><span class="s1">&#39;data/output/run1/result.nc&#39;</span><span class="p">)</span>
+
+<span class="n">plot_network_spacetime</span><span class="p">(</span><span class="n">result</span><span class="p">,</span> <span class="n">road_id</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>   <span class="c1"># space-time diagram</span>
+<span class="n">plot_network_layout</span><span class="p">(</span><span class="n">result</span><span class="p">)</span>                 <span class="c1"># road-network topology</span>
+<span class="n">plot_network_density</span><span class="p">(</span><span class="n">result</span><span class="p">)</span>                <span class="c1"># mean density per road vs time</span>
+
+<span class="c1"># Fundamental diagram (from fd_runner output)</span>
+<span class="n">plot_fundamental_diagram</span><span class="p">(</span><span class="n">rho</span><span class="p">,</span> <span class="n">J</span><span class="p">,</span> <span class="n">model</span><span class="o">=</span><span class="s1">&#39;NS&#39;</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>Space-time diagrams show site occupancy (black = occupied, white = empty) with
+site on the <span class="math notranslate nohighlight">\(y\)</span>-axis and time on the <span class="math notranslate nohighlight">\(x\)</span>-axis.  Diagonal bands
+slanting to the right are freely-moving vehicles; diagonal bands slanting to the
+left are backward-propagating jam waves.</p>
+</section>
+<section id="limitations">
+<h2>Limitations<a class="headerlink" href="#limitations" title="Link to this heading"></a></h2>
+<p><strong>Discrete representation</strong></p>
+<p>CA models resolve individual vehicles and produce stochastic, sample-path
+outputs.  Ensemble averages over many independent seeds are needed to obtain
+smooth density profiles or reliable fundamental-diagram estimates.  Single runs
+at small <span class="math notranslate nohighlight">\(L\)</span> exhibit strong finite-size fluctuations.</p>
+<p><strong>TASEP does not support variable speeds</strong></p>
+<p>The TASEP update rule is binary (move / do not move); <code class="docutils literal notranslate"><span class="pre">v_max</span></code> and <code class="docutils literal notranslate"><span class="pre">p_slow</span></code>
+are ignored when <code class="docutils literal notranslate"><span class="pre">model</span> <span class="pre">=</span> <span class="pre">'TASEP'</span></code>.  Lane-changing is also not available for
+TASEP runs: the model requires <code class="docutils literal notranslate"><span class="pre">model</span> <span class="pre">=</span> <span class="pre">'NS'</span></code> with at least two same-direction
+lanes.</p>
+<p><strong>Finite-size effects at the phase boundary</strong></p>
+<p>Near the LD/MC and HD/MC phase boundaries the domain wall performs a slow random
+walk and steady-state convergence is slow.  Runs at <span class="math notranslate nohighlight">\(L = 100\)</span>,
+<span class="math notranslate nohighlight">\(N_\text{steps} = 400\)</span> may not have fully converged; increase both by a
+factor of 5 near <span class="math notranslate nohighlight">\(\alpha \approx 0.5\)</span> or <span class="math notranslate nohighlight">\(\beta \approx 0.5\)</span>.</p>
+<p><strong>Open boundary artefacts</strong></p>
+<p>With open boundaries (<code class="docutils literal notranslate"><span class="pre">alpha</span></code>, <code class="docutils literal notranslate"><span class="pre">beta</span></code> &lt; 1) the density profile is not
+spatially uniform: boundary layers of width <span class="math notranslate nohighlight">\(\sim\!\sqrt{L}\)</span> form near
+each end.  The mean density reported by the simulator includes these layers;
+for bulk properties use a periodic ring (<code class="docutils literal notranslate"><span class="pre">single_lane_periodic</span></code>) or discard
+sites within <span class="math notranslate nohighlight">\(\sim 2\sqrt{L}\)</span> of each boundary.</p>
+<p><strong>Periodic ring requires fixed vehicle count</strong></p>
+<p>The <code class="docutils literal notranslate"><span class="pre">single_lane_periodic</span></code> preset seeds vehicles evenly and runs a closed ring
+at fixed <span class="math notranslate nohighlight">\(N\)</span>; density is conserved exactly.  This is appropriate for the
+fundamental-diagram sweep (which needs a fixed density) but does not model
+inflow/outflow dynamics.</p>
+<p><strong>No on-ramps in the 1D lane model</strong></p>
+<p>The single-lane presets treat the road as one segment.  Merging or diverging
+flows require a junction preset (<code class="docutils literal notranslate"><span class="pre">t_junction</span></code>, <code class="docutils literal notranslate"><span class="pre">crossroads</span></code>, or similar)
+with a routing probability table.</p>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="multilane_pde.html" class="btn btn-neutral float-left" title="Multilane PDE model" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="../developer_guide/index.html" class="btn btn-neutral float-right" title="Developer guide" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2026, Jasper Allen, Tristan McCarthy, Stephan Gambart, Lucas Belz-Koeling.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

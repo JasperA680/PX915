@@ -1,0 +1,552 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Defining a custom road network &mdash; PX915 Traffic Flow Modelling 0.1.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=9edc463e" />
+
+  
+      <script src="../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../_static/documentation_options.js?v=01f34227"></script>
+      <script src="../_static/doctools.js?v=9a2dae69"></script>
+      <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="Extending the code" href="extending.html" />
+    <link rel="prev" title="Parallelisation" href="parallelisation.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../index.html" class="icon icon-home">
+            PX915 Traffic Flow Modelling
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">User guide:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../user_guide/index.html">User guide</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Developer guide:</span></p>
+<ul class="current">
+<li class="toctree-l1 current"><a class="reference internal" href="index.html">Developer guide</a><ul class="current">
+<li class="toctree-l2"><a class="reference internal" href="numerical_methods.html">Numerical methods</a></li>
+<li class="toctree-l2"><a class="reference internal" href="parallelisation.html">Parallelisation</a></li>
+<li class="toctree-l2 current"><a class="current reference internal" href="#">Defining a custom road network</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#the-four-layer-data-model">The four-layer data model</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#wiring-rules">Wiring rules</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="#lane-flow-direction">Lane flow direction</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#road-endpoints-and-junctions">Road endpoints and junctions</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#junction-legs-and-lane-indices">Junction legs and lane indices</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#routing-matrix">Routing matrix</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#perimeter-ports">Perimeter ports</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#periodic-and-pre-placed-lanes">Periodic and pre-placed lanes</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="#spec-field-reference">Spec field reference</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="#lanespec">LaneSpec</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#roadspec">RoadSpec</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#junctionlegspec">JunctionLegSpec</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#junctionspec">JunctionSpec</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#layoutspec">LayoutSpec</a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="#validating-running-and-inspecting-a-custom-network">Validating, running, and inspecting a custom network</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#reusing-the-presets-as-templates">Reusing the presets as templates</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="extending.html">Extending the code</a></li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">API reference:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../api/index.html">API reference</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">PX915 Traffic Flow Modelling</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="index.html">Developer guide</a></li>
+      <li class="breadcrumb-item active">Defining a custom road network</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../_sources/developer_guide/custom_networks.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="defining-a-custom-road-network">
+<h1>Defining a custom road network<a class="headerlink" href="#defining-a-custom-road-network" title="Link to this heading"></a></h1>
+<p>The CA / NS network simulator runs on any topology expressible through the
+spec dataclasses in <a class="reference internal" href="../api/python.html#module-road_network" title="road_network"><code class="xref py py-mod docutils literal notranslate"><span class="pre">road_network</span></code></a>. Seven preset builders cover the
+common cases (single lane, two-lane, T-junction, crossroads, roundabout,
+town, periodic ring), but anything outside that list — branches, bypasses,
+asymmetric mergers, longer chains of junctions — has to be authored by
+hand. This page documents the data model and the wiring rules so a
+non-preset network can be assembled with confidence.</p>
+<p>For a step-by-step worked example, see <em>Section 5: Custom Network —
+Asymmetric Y-Junction</em> in the tutorial notebook
+(<code class="docutils literal notranslate"><span class="pre">notebooks/tutorial.ipynb</span></code>).</p>
+<section id="the-four-layer-data-model">
+<h2>The four-layer data model<a class="headerlink" href="#the-four-layer-data-model" title="Link to this heading"></a></h2>
+<p>A network is described by four nested dataclasses, all defined in
+<a class="reference internal" href="../api/python.html#module-road_network" title="road_network"><code class="xref py py-mod docutils literal notranslate"><span class="pre">road_network</span></code></a>:</p>
+<ul class="simple">
+<li><p><code class="xref py py-class docutils literal notranslate"><span class="pre">LaneSpec</span></code> — one directional chain of CA cells. Carries its
+length, flow direction (<code class="docutils literal notranslate"><span class="pre">+1</span></code> or <code class="docutils literal notranslate"><span class="pre">-1</span></code>), open-boundary inflow /
+outflow rates <code class="docutils literal notranslate"><span class="pre">alpha</span></code> / <code class="docutils literal notranslate"><span class="pre">beta</span></code>, the <code class="docutils literal notranslate"><span class="pre">open_in</span></code> / <code class="docutils literal notranslate"><span class="pre">open_out</span></code> flags,
+and the optional <code class="docutils literal notranslate"><span class="pre">is_periodic</span></code> ring flag plus pre-placed
+<code class="docutils literal notranslate"><span class="pre">n_vehicles</span></code> count.</p></li>
+<li><p><code class="xref py py-class docutils literal notranslate"><span class="pre">RoadSpec</span></code> — a bundle of lanes between two endpoints. Each
+endpoint is either an <em>open boundary</em> (<code class="docutils literal notranslate"><span class="pre">end_junction</span> <span class="pre">=</span> <span class="pre">0</span></code>) or
+<em>attached to a junction</em> by id. A bidirectional road is just a road
+with one lane of each flow direction.</p></li>
+<li><p><code class="xref py py-class docutils literal notranslate"><span class="pre">JunctionSpec</span></code> — a routing point. Carries lists of inbound and
+outbound <code class="xref py py-class docutils literal notranslate"><span class="pre">JunctionLegSpec</span></code> legs (each leg references a specific
+road / lane index) and a routing-probability matrix.</p></li>
+<li><p><code class="xref py py-class docutils literal notranslate"><span class="pre">LayoutSpec</span></code> — purely cosmetic <code class="docutils literal notranslate"><span class="pre">(x,</span> <span class="pre">y)</span></code> coordinates for
+junctions and road endpoints. Ignored by the Fortran simulator but
+carried verbatim through the config NetCDF so the GUI and the
+<code class="docutils literal notranslate"><span class="pre">plot_network_*</span></code> helpers can re-render the geometry. An empty layout
+is allowed; the simulation will run, but visualisations will collapse
+every junction onto the origin.</p></li>
+</ul>
+<p>Top-level <code class="xref py py-class docutils literal notranslate"><span class="pre">NetworkSpec</span></code> holds <code class="docutils literal notranslate"><span class="pre">roads</span></code> and <code class="docutils literal notranslate"><span class="pre">junctions</span></code>;
+<code class="xref py py-class docutils literal notranslate"><span class="pre">SimParams</span></code> carries the runtime parameters (<code class="docutils literal notranslate"><span class="pre">n_steps</span></code>, <code class="docutils literal notranslate"><span class="pre">v_max</span></code>,
+<code class="docutils literal notranslate"><span class="pre">p_slow</span></code>, <code class="docutils literal notranslate"><span class="pre">rng_seed</span></code>, lane-change model, etc.). The full field-by-field
+signatures are in the auto-generated API docs (see <a class="reference internal" href="../api/python.html"><span class="doc">Python API</span></a>).</p>
+</section>
+<section id="wiring-rules">
+<h2>Wiring rules<a class="headerlink" href="#wiring-rules" title="Link to this heading"></a></h2>
+<p>The presets in <a class="reference internal" href="../api/python.html#module-road_network" title="road_network"><code class="xref py py-mod docutils literal notranslate"><span class="pre">road_network</span></code></a> encode several invariants silently. The
+<a class="reference internal" href="../api/python.html#road_network.validate" title="road_network.validate"><code class="xref py py-func docutils literal notranslate"><span class="pre">road_network.validate()</span></code></a> function checks the easy ones at spec time;
+the harder ones are runtime properties of the Fortran simulator and only
+surface as crashes or nonsense flow. The rules below summarise both.</p>
+<section id="lane-flow-direction">
+<h3>Lane flow direction<a class="headerlink" href="#lane-flow-direction" title="Link to this heading"></a></h3>
+<p>A lane’s <code class="docutils literal notranslate"><span class="pre">flow_direction</span></code> determines which way vehicles travel along
+the road:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">+1</span></code> — vehicles travel <code class="docutils literal notranslate"><span class="pre">end_1</span> <span class="pre">→</span> <span class="pre">end_2</span></code>;</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">-1</span></code> — vehicles travel <code class="docutils literal notranslate"><span class="pre">end_2</span> <span class="pre">→</span> <span class="pre">end_1</span></code>.</p></li>
+</ul>
+<p>A bidirectional road is built from two lanes with opposite
+<code class="docutils literal notranslate"><span class="pre">flow_direction</span></code> values. Several same-direction lanes on the same road
+form a multilane carriageway and exercise the lane-change module when
+<code class="docutils literal notranslate"><span class="pre">SimParams.lc_model</span> <span class="pre">&gt;=</span> <span class="pre">0</span></code>.</p>
+</section>
+<section id="road-endpoints-and-junctions">
+<h3>Road endpoints and junctions<a class="headerlink" href="#road-endpoints-and-junctions" title="Link to this heading"></a></h3>
+<p><code class="docutils literal notranslate"><span class="pre">RoadSpec.end_junction</span> <span class="pre">=</span> <span class="pre">(a,</span> <span class="pre">b)</span></code> records which junction (if any) sits at
+each end of the road:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">0</span></code> means <em>open boundary at this end</em>. Vehicles enter / exit the
+network at the open end at rates <code class="docutils literal notranslate"><span class="pre">alpha</span></code> / <code class="docutils literal notranslate"><span class="pre">beta</span></code>; the lane must
+set <code class="docutils literal notranslate"><span class="pre">open_in=True</span></code> and / or <code class="docutils literal notranslate"><span class="pre">open_out=True</span></code> for those rates to be
+active.</p></li>
+<li><p>Any non-zero value is the <code class="docutils literal notranslate"><span class="pre">id</span></code> of the junction connected to that
+end. The same junction id may appear at one end, both ends, or neither.</p></li>
+</ul>
+<p>A road with <code class="docutils literal notranslate"><span class="pre">end_junction</span> <span class="pre">=</span> <span class="pre">(0,</span> <span class="pre">0)</span></code> and no junctions referencing it is
+an isolated chain — useful for the single-lane and two-lane presets, and
+for the closed periodic ring (<code class="docutils literal notranslate"><span class="pre">is_periodic=True</span></code>).</p>
+</section>
+<section id="junction-legs-and-lane-indices">
+<h3>Junction legs and lane indices<a class="headerlink" href="#junction-legs-and-lane-indices" title="Link to this heading"></a></h3>
+<p>Each junction has a list of inbound legs (<code class="docutils literal notranslate"><span class="pre">in_legs</span></code>) and a list of
+outbound legs (<code class="docutils literal notranslate"><span class="pre">out_legs</span></code>). A leg references a specific
+<code class="docutils literal notranslate"><span class="pre">(road_id,</span> <span class="pre">lane_index)</span></code> pair, where <code class="docutils literal notranslate"><span class="pre">lane_index</span></code> is the <strong>1-based</strong>
+positional index into that road’s <code class="docutils literal notranslate"><span class="pre">lanes</span></code> list (i.e. lane 1, lane 2,
+…).</p>
+<p>For a road whose end <code class="docutils literal notranslate"><span class="pre">e</span></code> is attached to a junction:</p>
+<ul class="simple">
+<li><p>an <em>inbound</em> leg of that junction references a lane whose
+<code class="docutils literal notranslate"><span class="pre">flow_direction</span></code> points <strong>into</strong> end <code class="docutils literal notranslate"><span class="pre">e</span></code>;</p></li>
+<li><p>an <em>outbound</em> leg references a lane whose <code class="docutils literal notranslate"><span class="pre">flow_direction</span></code> points
+<strong>out of</strong> end <code class="docutils literal notranslate"><span class="pre">e</span></code>.</p></li>
+</ul>
+<p>The helpers <code class="docutils literal notranslate"><span class="pre">_lane_inbound_at</span></code> and <code class="docutils literal notranslate"><span class="pre">_lane_outbound_at</span></code> in
+<a class="reference internal" href="../api/python.html#module-road_network" title="road_network"><code class="xref py py-mod docutils literal notranslate"><span class="pre">road_network</span></code></a> are the canonical implementation of this rule and
+the presets use them throughout — they’re a useful reference when
+writing a custom junction.</p>
+<p>A multi-lane road feeding a junction contributes <em>one leg per lane</em> to
+the appropriate side. A two-lane same-direction carriageway feeding into
+a junction gives two inbound legs; the corresponding outflow road
+contributes two outbound legs. <code class="docutils literal notranslate"><span class="pre">n_in</span></code> and <code class="docutils literal notranslate"><span class="pre">n_out</span></code> must equal the
+lengths of <code class="docutils literal notranslate"><span class="pre">in_legs</span></code> and <code class="docutils literal notranslate"><span class="pre">out_legs</span></code> (<code class="docutils literal notranslate"><span class="pre">validate</span></code> enforces this).</p>
+</section>
+<section id="routing-matrix">
+<h3>Routing matrix<a class="headerlink" href="#routing-matrix" title="Link to this heading"></a></h3>
+<p><code class="docutils literal notranslate"><span class="pre">JunctionSpec.routes</span></code> is a list of length <code class="docutils literal notranslate"><span class="pre">n_in</span></code>; each row has length
+<code class="docutils literal notranslate"><span class="pre">n_out</span></code> and gives the probability that a vehicle arriving on the
+matching inbound leg leaves via each outbound leg. Each row must sum to
+<code class="docutils literal notranslate"><span class="pre">1.0</span></code> to within <code class="docutils literal notranslate"><span class="pre">1e-6</span></code>; <code class="docutils literal notranslate"><span class="pre">validate</span></code> rejects rows that don’t.</p>
+<p>When the inbound and outbound legs of a junction reference the same
+underlying road, the corresponding entry is a U-turn — by convention
+these are set to <code class="docutils literal notranslate"><span class="pre">0.0</span></code> in every preset.</p>
+<p>The matrix need not be square. A bifurcation (one inflow road, two
+outflow roads) is <code class="docutils literal notranslate"><span class="pre">n_in=1,</span> <span class="pre">n_out=2</span></code> with a single-row routing matrix
+<code class="docutils literal notranslate"><span class="pre">[[p_L,</span> <span class="pre">1</span> <span class="pre">-</span> <span class="pre">p_L]]</span></code> — the Y-junction tutorial example. A merge is
+<code class="docutils literal notranslate"><span class="pre">n_in=2,</span> <span class="pre">n_out=1</span></code>. Multi-lane same-direction roads contribute one leg
+per lane, so the dimensions scale up accordingly.</p>
+</section>
+<section id="perimeter-ports">
+<h3>Perimeter ports<a class="headerlink" href="#perimeter-ports" title="Link to this heading"></a></h3>
+<p>Each <code class="xref py py-class docutils literal notranslate"><span class="pre">JunctionLegSpec</span></code> carries an optional <code class="docutils literal notranslate"><span class="pre">perim</span></code> field. These
+are clockwise port indices around the junction perimeter — they are used
+by the Fortran asymmetric-yield code (<code class="docutils literal notranslate"><span class="pre">junction_mod::chords_cross</span></code>) to
+decide which route chords cross when two candidates contend for the same
+junction step.</p>
+<p>The validation rules are:</p>
+<ul class="simple">
+<li><p>perim must be <strong>all-or-none across a single junction</strong>: if any leg
+sets <code class="docutils literal notranslate"><span class="pre">perim</span> <span class="pre">&gt;=</span> <span class="pre">0</span></code>, <em>every</em> leg of that junction must.</p></li>
+<li><p>perim values within a junction must be <strong>distinct integers</strong> (one per
+port).</p></li>
+</ul>
+<p>Symmetric four-way junctions (<code class="docutils literal notranslate"><span class="pre">n_in</span> <span class="pre">==</span> <span class="pre">4</span> <span class="pre">==</span> <span class="pre">n_out</span></code>) don’t use perim:
+the symmetric yield rules in <code class="docutils literal notranslate"><span class="pre">build_yield_matrix_v2</span></code> work from leg
+indices alone. The <a class="reference internal" href="../api/python.html#road_network.crossroads" title="road_network.crossroads"><code class="xref py py-func docutils literal notranslate"><span class="pre">road_network.crossroads()</span></code></a> and
+<a class="reference internal" href="../api/python.html#road_network.town" title="road_network.town"><code class="xref py py-func docutils literal notranslate"><span class="pre">road_network.town()</span></code></a> presets exploit this and leave <code class="docutils literal notranslate"><span class="pre">perim</span></code> at
+its default of <code class="docutils literal notranslate"><span class="pre">-1</span></code> throughout.</p>
+<p><strong>Any other junction shape (anything other than a symmetric 4-way) must
+set perim on every leg.</strong> The asymmetric yield routine
+(<code class="docutils literal notranslate"><span class="pre">build_yield_matrix_asym</span></code>) dereferences <code class="docutils literal notranslate"><span class="pre">in_perim(i)</span></code> and
+<code class="docutils literal notranslate"><span class="pre">out_perim(i)</span></code> unconditionally; if those arrays were not allocated
+(because no leg set perim) the run will segfault. Set perim ports
+clockwise around the junction, starting from any convenient leg. The
+exact starting position doesn’t matter — only the cyclic order is
+consulted.</p>
+<p>The <a class="reference internal" href="../api/python.html#road_network.t_junction" title="road_network.t_junction"><code class="xref py py-func docutils literal notranslate"><span class="pre">road_network.t_junction()</span></code></a> and <a class="reference internal" href="../api/python.html#road_network.roundabout" title="road_network.roundabout"><code class="xref py py-func docutils literal notranslate"><span class="pre">road_network.roundabout()</span></code></a>
+presets show the convention: each road takes two consecutive ports (in
+then out) and roads are placed CW around the junction.</p>
+</section>
+<section id="periodic-and-pre-placed-lanes">
+<h3>Periodic and pre-placed lanes<a class="headerlink" href="#periodic-and-pre-placed-lanes" title="Link to this heading"></a></h3>
+<p>Two optional <code class="xref py py-class docutils literal notranslate"><span class="pre">LaneSpec</span></code> fields are consumed by the Fortran
+builder rather than the runtime step:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">is_periodic</span> <span class="pre">=</span> <span class="pre">True</span></code> — closes the lane into a ring of length
+<code class="docutils literal notranslate"><span class="pre">length</span></code>. The periodic branch of the NS step (<code class="docutils literal notranslate"><span class="pre">NS_model_step</span></code> in
+<code class="docutils literal notranslate"><span class="pre">NS_model.f90</span></code>) ignores <code class="docutils literal notranslate"><span class="pre">alpha</span></code> / <code class="docutils literal notranslate"><span class="pre">beta</span></code> / <code class="docutils literal notranslate"><span class="pre">open_in</span></code> /
+<code class="docutils literal notranslate"><span class="pre">open_out</span></code> entirely. Mutually exclusive with open-boundary behaviour
+in practice. Used by the <a class="reference internal" href="../api/python.html#road_network.single_lane_periodic" title="road_network.single_lane_periodic"><code class="xref py py-func docutils literal notranslate"><span class="pre">road_network.single_lane_periodic()</span></code></a>
+preset and by the periodic-NS fundamental-diagram sweep.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">n_vehicles</span> <span class="pre">&gt;</span> <span class="pre">0</span></code> — when set, <code class="docutils literal notranslate"><span class="pre">network_init_mod::place_evenly</span></code>
+seeds that many cars at evenly-spaced sites on this lane before step
+1. Used to fix the global density on periodic rings; harmless on open
+lanes (just gives a non-empty initial state).</p></li>
+</ul>
+</section>
+</section>
+<section id="spec-field-reference">
+<h2>Spec field reference<a class="headerlink" href="#spec-field-reference" title="Link to this heading"></a></h2>
+<p>The tables below summarise each dataclass’s fields. The full
+auto-generated reference (including default values and docstrings) lives
+in <a class="reference internal" href="../api/python.html"><span class="doc">Python API</span></a>; this page is the quick lookup for hand-building.</p>
+<section id="lanespec">
+<h3>LaneSpec<a class="headerlink" href="#lanespec" title="Link to this heading"></a></h3>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 22.0%" />
+<col style="width: 16.0%" />
+<col style="width: 62.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Field</p></th>
+<th class="head"><p>Type</p></th>
+<th class="head"><p>Meaning</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">length</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">int</span></code></p></td>
+<td><p>Number of CA cells in the lane.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">flow_direction</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">int</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">+1</span></code> for end_1 → end_2, <code class="docutils literal notranslate"><span class="pre">-1</span></code> for end_2 → end_1.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">alpha</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">float</span></code></p></td>
+<td><p>Open-boundary inflow rate. Ignored unless <code class="docutils literal notranslate"><span class="pre">open_in</span></code> is true.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">beta</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">float</span></code></p></td>
+<td><p>Open-boundary outflow rate. Ignored unless <code class="docutils literal notranslate"><span class="pre">open_out</span></code> is true.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">open_in</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">bool</span></code></p></td>
+<td><p>Open inflow at the upstream end of this lane.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">open_out</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">bool</span></code></p></td>
+<td><p>Open outflow at the downstream end of this lane.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">is_periodic</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">bool</span></code></p></td>
+<td><p>Treat the lane as a closed ring.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">n_vehicles</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">int</span></code></p></td>
+<td><p>Number of pre-placed vehicles at step 0.</p></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="roadspec">
+<h3>RoadSpec<a class="headerlink" href="#roadspec" title="Link to this heading"></a></h3>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 22.0%" />
+<col style="width: 22.0%" />
+<col style="width: 56.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Field</p></th>
+<th class="head"><p>Type</p></th>
+<th class="head"><p>Meaning</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">id</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">int</span></code></p></td>
+<td><p>Unique road identifier; referenced by every junction leg.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">end_junction</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">tuple[int,</span> <span class="pre">int]</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">(j_at_end_1,</span> <span class="pre">j_at_end_2)</span></code>; <code class="docutils literal notranslate"><span class="pre">0</span></code> = open boundary.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">lanes</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">list[LaneSpec]</span></code></p></td>
+<td><p>One entry per lane on this road; at least one required.</p></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="junctionlegspec">
+<h3>JunctionLegSpec<a class="headerlink" href="#junctionlegspec" title="Link to this heading"></a></h3>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 22.0%" />
+<col style="width: 16.0%" />
+<col style="width: 62.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Field</p></th>
+<th class="head"><p>Type</p></th>
+<th class="head"><p>Meaning</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">road</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">int</span></code></p></td>
+<td><p>Road id this leg attaches to.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">lane</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">int</span></code></p></td>
+<td><p>1-based lane index within that road.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">perim</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">int</span></code></p></td>
+<td><p>Optional CW perimeter port index; <code class="docutils literal notranslate"><span class="pre">-1</span></code> = symmetric junction.</p></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="junctionspec">
+<h3>JunctionSpec<a class="headerlink" href="#junctionspec" title="Link to this heading"></a></h3>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 22.0%" />
+<col style="width: 28.0%" />
+<col style="width: 50.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Field</p></th>
+<th class="head"><p>Type</p></th>
+<th class="head"><p>Meaning</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">id</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">int</span></code></p></td>
+<td><p>Unique junction identifier.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">n_in</span></code> / <code class="docutils literal notranslate"><span class="pre">n_out</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">int</span></code></p></td>
+<td><p>Number of inbound / outbound legs.</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">in_legs</span></code> / <code class="docutils literal notranslate"><span class="pre">out_legs</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">list[JunctionLegSpec]</span></code></p></td>
+<td><p>Inbound and outbound leg specs.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">routes</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">list[list[float]]</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">n_in</span> <span class="pre">×</span> <span class="pre">n_out</span></code> routing-probability matrix; each row sums to 1.</p></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="layoutspec">
+<h3>LayoutSpec<a class="headerlink" href="#layoutspec" title="Link to this heading"></a></h3>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 28.0%" />
+<col style="width: 36.0%" />
+<col style="width: 36.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Field</p></th>
+<th class="head"><p>Type</p></th>
+<th class="head"><p>Meaning</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">junctions</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">dict[int,</span> <span class="pre">tuple[float,</span> <span class="pre">float]]</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">{junction_id:</span> <span class="pre">(x,</span> <span class="pre">y)}</span></code>.</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">road_endpoints</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">dict[int,</span> <span class="pre">tuple[tuple[float,</span> <span class="pre">float],</span> <span class="pre">tuple[float,</span> <span class="pre">float]]]</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">{road_id:</span> <span class="pre">((x1,</span> <span class="pre">y1),</span> <span class="pre">(x2,</span> <span class="pre">y2))}</span></code>.</p></td>
+</tr>
+</tbody>
+</table>
+</section>
+</section>
+<section id="validating-running-and-inspecting-a-custom-network">
+<h2>Validating, running, and inspecting a custom network<a class="headerlink" href="#validating-running-and-inspecting-a-custom-network" title="Link to this heading"></a></h2>
+<p>The flow is the same as for any preset. With a custom <code class="docutils literal notranslate"><span class="pre">spec</span></code> /
+<code class="docutils literal notranslate"><span class="pre">layout</span></code> in hand:</p>
+<ol class="arabic simple">
+<li><p>Call <a class="reference internal" href="../api/python.html#road_network.validate" title="road_network.validate"><code class="xref py py-func docutils literal notranslate"><span class="pre">road_network.validate()</span></code></a> on the spec. This checks duplicate
+road / junction ids, leg counts, route-row sums, and the perim
+all-or-none rule. <code class="docutils literal notranslate"><span class="pre">validate</span></code> raises <code class="docutils literal notranslate"><span class="pre">ValueError</span></code> for any
+violation — fix the spec rather than catching.</p></li>
+<li><p>Build <code class="xref py py-class docutils literal notranslate"><span class="pre">SimParams</span></code> with the desired <code class="docutils literal notranslate"><span class="pre">n_steps</span></code>, <code class="docutils literal notranslate"><span class="pre">v_max</span></code>,
+<code class="docutils literal notranslate"><span class="pre">p_slow</span></code>, <code class="docutils literal notranslate"><span class="pre">rng_seed</span></code> and lane-change model (<code class="docutils literal notranslate"><span class="pre">lc_model</span> <span class="pre">=</span> <span class="pre">0</span></code> for
+symmetric lane changes on multi-lane carriageways; <code class="docutils literal notranslate"><span class="pre">-1</span></code> to
+disable).</p></li>
+<li><p>Call <a class="reference internal" href="../api/python.html#python.run_simulation.run_simulation" title="python.run_simulation.run_simulation"><code class="xref py py-func docutils literal notranslate"><span class="pre">python.run_simulation.run_simulation()</span></code></a> with the spec,
+params, layout and an output directory. The runner writes
+<code class="docutils literal notranslate"><span class="pre">config.nc</span></code> (the spec + layout serialised by
+<a class="reference internal" href="../api/python.html#python.io.write_config_netcdf" title="python.io.write_config_netcdf"><code class="xref py py-func docutils literal notranslate"><span class="pre">python.io.write_config_netcdf()</span></code></a>), invokes
+<code class="docutils literal notranslate"><span class="pre">./build/run_network</span></code> as a subprocess, and returns the path to
+<code class="docutils literal notranslate"><span class="pre">result.nc</span></code>.</p></li>
+<li><p>Load the result with <a class="reference internal" href="../api/python.html#python.io.load_network_netcdf" title="python.io.load_network_netcdf"><code class="xref py py-func docutils literal notranslate"><span class="pre">python.io.load_network_netcdf()</span></code></a>. The
+returned <code class="xref py py-class docutils literal notranslate"><span class="pre">NetworkResult</span></code> carries the full
+<code class="docutils literal notranslate"><span class="pre">occupancy[t,</span> <span class="pre">lane_index,</span> <span class="pre">cell]</span></code> history, <code class="docutils literal notranslate"><span class="pre">velocity</span></code> history,
+per-road density / entries / exits time series, and the lane-level
+metadata needed by the visualisation helpers.</p></li>
+</ol>
+<p>The standard plotting helpers in <a class="reference internal" href="../api/python.html#module-CA_visualisation" title="CA_visualisation"><code class="xref py py-mod docutils literal notranslate"><span class="pre">CA_visualisation</span></code></a> work on any
+<code class="xref py py-class docutils literal notranslate"><span class="pre">NetworkResult</span></code>:</p>
+<ul class="simple">
+<li><p><a class="reference internal" href="../api/python.html#CA_visualisation.plot_network_layout" title="CA_visualisation.plot_network_layout"><code class="xref py py-func docutils literal notranslate"><span class="pre">CA_visualisation.plot_network_layout()</span></code></a> — the network diagram
+with optional per-lane occupancy heatmap (<code class="docutils literal notranslate"><span class="pre">occupancy_t=t</span></code> for an
+instantaneous snapshot, or <code class="docutils literal notranslate"><span class="pre">occupancy_t=(t0,</span> <span class="pre">t1)</span></code> for a mean over a
+range);</p></li>
+<li><p><a class="reference internal" href="../api/python.html#CA_visualisation.plot_network_density" title="CA_visualisation.plot_network_density"><code class="xref py py-func docutils literal notranslate"><span class="pre">CA_visualisation.plot_network_density()</span></code></a> — per-road density time
+series;</p></li>
+<li><p><a class="reference internal" href="../api/python.html#CA_visualisation.plot_network_currents" title="CA_visualisation.plot_network_currents"><code class="xref py py-func docutils literal notranslate"><span class="pre">CA_visualisation.plot_network_currents()</span></code></a> — per-road exit-flow
+time series;</p></li>
+<li><p><a class="reference internal" href="../api/python.html#CA_visualisation.plot_network_spacetime" title="CA_visualisation.plot_network_spacetime"><code class="xref py py-func docutils literal notranslate"><span class="pre">CA_visualisation.plot_network_spacetime()</span></code></a> — single-lane
+space-time diagram, keyed by <code class="docutils literal notranslate"><span class="pre">road_id</span></code> and <code class="docutils literal notranslate"><span class="pre">lane_index</span></code>.</p></li>
+</ul>
+<p>The heatmap colours and the space-time diagrams require the
+<code class="xref py py-class docutils literal notranslate"><span class="pre">LayoutSpec</span></code> to be populated; the density and currents plots do
+not (they’re indexed by road id alone).</p>
+</section>
+<section id="reusing-the-presets-as-templates">
+<h2>Reusing the presets as templates<a class="headerlink" href="#reusing-the-presets-as-templates" title="Link to this heading"></a></h2>
+<p>The seven preset builders in <a class="reference internal" href="../api/python.html#module-road_network" title="road_network"><code class="xref py py-mod docutils literal notranslate"><span class="pre">road_network</span></code></a> are the most
+up-to-date worked examples in the codebase:</p>
+<ul class="simple">
+<li><p><a class="reference internal" href="../api/python.html#road_network.single_lane" title="road_network.single_lane"><code class="xref py py-func docutils literal notranslate"><span class="pre">road_network.single_lane()</span></code></a> and
+<a class="reference internal" href="../api/python.html#road_network.single_lane_periodic" title="road_network.single_lane_periodic"><code class="xref py py-func docutils literal notranslate"><span class="pre">road_network.single_lane_periodic()</span></code></a> — one road, one lane, open
+or closed.</p></li>
+<li><p><a class="reference internal" href="../api/python.html#road_network.two_lane" title="road_network.two_lane"><code class="xref py py-func docutils literal notranslate"><span class="pre">road_network.two_lane()</span></code></a> — one road, two same-direction lanes;
+the lane-change baseline.</p></li>
+<li><p><a class="reference internal" href="../api/python.html#road_network.t_junction" title="road_network.t_junction"><code class="xref py py-func docutils literal notranslate"><span class="pre">road_network.t_junction()</span></code></a> — three roads at one junction, with
+perimeter ports set (good template for any asymmetric junction).</p></li>
+<li><p><a class="reference internal" href="../api/python.html#road_network.crossroads" title="road_network.crossroads"><code class="xref py py-func docutils literal notranslate"><span class="pre">road_network.crossroads()</span></code></a> — four roads at one symmetric
+junction, no perim required.</p></li>
+<li><p><a class="reference internal" href="../api/python.html#road_network.roundabout" title="road_network.roundabout"><code class="xref py py-func docutils literal notranslate"><span class="pre">road_network.roundabout()</span></code></a> — four T-junctions in a ring with
+four external arms.</p></li>
+<li><p><a class="reference internal" href="../api/python.html#road_network.town" title="road_network.town"><code class="xref py py-func docutils literal notranslate"><span class="pre">road_network.town()</span></code></a> — 2×2 grid of crossroads, eight external
+arms.</p></li>
+</ul>
+<p>For a topology not far off one of these, copying the preset source and
+modifying it is usually faster than building from scratch. The
+<code class="docutils literal notranslate"><span class="pre">crossroads</span></code> source is the cleanest template for any symmetric multi-
+arm junction; <code class="docutils literal notranslate"><span class="pre">t_junction</span></code> is the cleanest template when the junction
+needs perim ports.</p>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="parallelisation.html" class="btn btn-neutral float-left" title="Parallelisation" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="extending.html" class="btn btn-neutral float-right" title="Extending the code" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2026, Jasper Allen, Tristan McCarthy, Stephan Gambart, Lucas Belz-Koeling.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

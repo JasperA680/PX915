@@ -1,0 +1,268 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Multilane PDE model &mdash; PX915 Traffic Flow Modelling 0.1.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=9edc463e" />
+
+  
+      <script src="../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../_static/documentation_options.js?v=01f34227"></script>
+      <script src="../_static/doctools.js?v=9a2dae69"></script>
+      <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
+      <script async="async" src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <script src="../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="Cellular automaton traffic models" href="ca_model.html" />
+    <link rel="prev" title="PDE traffic-flow model" href="pde_model.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../index.html" class="icon icon-home">
+            PX915 Traffic Flow Modelling
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">User guide:</span></p>
+<ul class="current">
+<li class="toctree-l1 current"><a class="reference internal" href="index.html">User guide</a><ul class="current">
+<li class="toctree-l2"><a class="reference internal" href="installation.html">Installation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="quickstart.html">Quickstart</a></li>
+<li class="toctree-l2"><a class="reference internal" href="pde_model.html">PDE traffic-flow model</a></li>
+<li class="toctree-l2 current"><a class="current reference internal" href="#">Multilane PDE model</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#running-the-multilane-solver">Running the multilane solver</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#per-lane-parameters">Per-lane parameters</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#parameters">Parameters</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#effect-of-the-lane-change-rate-k">Effect of the lane-change rate <em>k</em></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#speed-limit-with-multiple-lanes">Speed limit with multiple lanes</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#visualising-multilane-output">Visualising multilane output</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="ca_model.html">Cellular automaton traffic models</a></li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Developer guide:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../developer_guide/index.html">Developer guide</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">API reference:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../api/index.html">API reference</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">PX915 Traffic Flow Modelling</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="index.html">User guide</a></li>
+      <li class="breadcrumb-item active">Multilane PDE model</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../_sources/user_guide/multilane_pde.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="multilane-pde-model">
+<h1>Multilane PDE model<a class="headerlink" href="#multilane-pde-model" title="Link to this heading"></a></h1>
+<p>The multilane extension runs one LWR solver per lane and couples them through
+conservative lane-change source terms.  Vehicles move between lanes in
+proportion to the velocity difference between adjacent lanes, so faster lanes
+attract density from slower ones until the velocities equalise.</p>
+<p>The density in lane <em>l</em> evolves as</p>
+<div class="math notranslate nohighlight">
+\[\frac{\partial \rho_l}{\partial t}
++ \frac{\partial q_l}{\partial x}
+= S_l(\rho_1, \dots, \rho_L)\]</div>
+<p>where the source term <span class="math notranslate nohighlight">\(S_l\)</span> transfers mass from lane <em>l</em> to a faster
+neighbour (or receives mass from a slower one).  The transfer rate between two
+adjacent lanes is</p>
+<div class="math notranslate nohighlight">
+\[S = k \, \rho_\text{source}
+    \left(1 - \frac{\rho_\text{target}}{\rho_{\max}}\right)
+    \max(0,\, \Delta v)\]</div>
+<p>where <em>k</em> is the lane-change rate, the gap factor
+<span class="math notranslate nohighlight">\((1 - \rho_\text{target}/\rho_\text{max})\)</span> prevents vehicles moving into
+a full lane, and <span class="math notranslate nohighlight">\(\Delta v\)</span> is the velocity advantage of the target lane.
+The source terms conserve total density across all lanes at every time step.</p>
+<section id="running-the-multilane-solver">
+<h2>Running the multilane solver<a class="headerlink" href="#running-the-multilane-solver" title="Link to this heading"></a></h2>
+<p>Pass <code class="docutils literal notranslate"><span class="pre">N_LANES</span></code> as argument 12 and <code class="docutils literal notranslate"><span class="pre">LANE_CHANGE_RATE</span></code> as argument 13.
+Arguments 1–11 are the same as the single-lane solver (see <a class="reference internal" href="pde_model.html"><span class="doc">PDE traffic-flow model</span></a>).</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>build/pde_solver<span class="w"> </span>&lt;M&gt;<span class="w"> </span>&lt;N_STEPS&gt;<span class="w"> </span>&lt;V_MAX&gt;<span class="w"> </span>&lt;RHO_MAX&gt;<span class="w"> </span>&lt;RHO_LEFT&gt;<span class="w"> </span>&lt;RHO_RIGHT&gt;<span class="w"> </span><span class="se">\</span>
+<span class="w">                 </span>&lt;IC_TYPE&gt;<span class="w"> </span>&lt;FLUX_TYPE&gt;<span class="w"> </span>&lt;BC_TYPE&gt;<span class="w"> </span>&lt;V_LIMIT&gt;<span class="w"> </span>&lt;OUTPUT&gt;<span class="w">      </span><span class="se">\</span>
+<span class="w">                 </span>&lt;N_LANES&gt;<span class="w"> </span>&lt;LANE_CHANGE_RATE&gt;
+</pre></div>
+</div>
+<p>Two-lane example — slow and fast lane, moderate lane-change rate:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>build/pde_solver<span class="w"> </span><span class="m">200</span><span class="w"> </span><span class="m">500</span><span class="w"> </span><span class="m">1</span>.0<span class="w"> </span><span class="m">1</span>.0<span class="w"> </span><span class="m">0</span>.5<span class="w"> </span><span class="m">0</span>.5<span class="w"> </span>constant<span class="w"> </span>lf<span class="w"> </span>open<span class="w"> </span><span class="m">1</span>.0<span class="w">        </span><span class="se">\</span>
+<span class="w">    </span>data/output/multilane.nc<span class="w"> </span><span class="m">2</span><span class="w"> </span><span class="m">0</span>.5<span class="w"> </span><span class="s2">&quot;1.0,1.5&quot;</span><span class="w"> </span><span class="s2">&quot;1.0,1.0&quot;</span>
+</pre></div>
+</div>
+<p>Here both lanes start at density 0.5 but lane 2 has a higher free-flow speed
+(1.5 vs 1.0), so vehicles gradually migrate to lane 2 until velocities match.</p>
+</section>
+<section id="per-lane-parameters">
+<h2>Per-lane parameters<a class="headerlink" href="#per-lane-parameters" title="Link to this heading"></a></h2>
+<p>Arguments 14 and 15 override the scalar <code class="docutils literal notranslate"><span class="pre">V_MAX</span></code> and <code class="docutils literal notranslate"><span class="pre">RHO_MAX</span></code> with
+lane-specific values supplied as a comma-separated string.</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="c1"># Arg 14: per-lane v_max</span>
+<span class="s2">&quot;1.0,1.5&quot;</span><span class="w">          </span><span class="c1"># lane 1 speed limit 1.0, lane 2 speed limit 1.5</span>
+
+<span class="c1"># Arg 15: per-lane rho_max</span>
+<span class="s2">&quot;1.0,1.0&quot;</span><span class="w">          </span><span class="c1"># same jam density in both lanes</span>
+</pre></div>
+</div>
+<p>The number of values in each string must equal <code class="docutils literal notranslate"><span class="pre">N_LANES</span></code> exactly, or the
+solver will exit with an error.</p>
+</section>
+<section id="parameters">
+<h2>Parameters<a class="headerlink" href="#parameters" title="Link to this heading"></a></h2>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 25.0%" />
+<col style="width: 45.0%" />
+<col style="width: 15.0%" />
+<col style="width: 15.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Parameter</p></th>
+<th class="head"><p>Description</p></th>
+<th class="head"><p>Default</p></th>
+<th class="head"><p>Notes</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">N_LANES</span></code></p></td>
+<td><p>Number of lanes</p></td>
+<td><p>1</p></td>
+<td><p>Arg 12</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">LANE_CHANGE_RATE</span></code> (<em>k</em>)</p></td>
+<td><p>Controls how quickly vehicles switch lanes</p></td>
+<td><p>0.0</p></td>
+<td><p>Arg 13; k = 0 disables lane changing</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">V_MAX_LANES</span></code></p></td>
+<td><p>Free-flow speed for each lane (comma-separated)</p></td>
+<td><p>All set to <code class="docutils literal notranslate"><span class="pre">V_MAX</span></code></p></td>
+<td><p>Arg 14; optional</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">RHO_MAX_LANES</span></code></p></td>
+<td><p>Jam density for each lane (comma-separated)</p></td>
+<td><p>All set to <code class="docutils literal notranslate"><span class="pre">RHO_MAX</span></code></p></td>
+<td><p>Arg 15; optional</p></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="effect-of-the-lane-change-rate-k">
+<h2>Effect of the lane-change rate <em>k</em><a class="headerlink" href="#effect-of-the-lane-change-rate-k" title="Link to this heading"></a></h2>
+<dl class="simple">
+<dt><em>k</em> = 0</dt><dd><p>Lanes are completely independent.  An initial density difference between
+lanes persists for the entire simulation.</p>
+</dd>
+<dt><em>k</em> small (≈ 0.1)</dt><dd><p>Slow equilibration.  Useful for studying transient behaviour when lanes
+start far from equilibrium.</p>
+</dd>
+<dt><em>k</em> moderate (≈ 0.5)</dt><dd><p>Lanes reach a common velocity within a few hundred time steps.  This is the
+physically realistic regime for motorway traffic.</p>
+</dd>
+<dt><em>k</em> large (&gt; 2)</dt><dd><p>Very rapid equilibration.  Can cause density overshoot and oscillation;
+reduce the time step or check the clip-count warning in the solver output.</p>
+</dd>
+</dl>
+</section>
+<section id="speed-limit-with-multiple-lanes">
+<h2>Speed limit with multiple lanes<a class="headerlink" href="#speed-limit-with-multiple-lanes" title="Link to this heading"></a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">V_LIMIT</span></code> applies a global speed cap across all lanes.  This is distinct from
+setting different <code class="docutils literal notranslate"><span class="pre">V_MAX_LANES</span></code> values:</p>
+<ul class="simple">
+<li><p><strong>Different</strong> <code class="docutils literal notranslate"><span class="pre">V_MAX_LANES</span></code>: each lane has a different fundamental diagram.
+Lane changing still occurs because the velocity functions differ.</p></li>
+<li><p><strong>Global</strong> <code class="docutils literal notranslate"><span class="pre">V_LIMIT</span></code>: all lanes share the same cap.  At low densities
+(ρ &lt; ρ*) every lane travels at <code class="docutils literal notranslate"><span class="pre">V_LIMIT</span></code> regardless of its <code class="docutils literal notranslate"><span class="pre">V_MAX</span></code>, which
+suppresses the velocity difference driving lane changes.</p></li>
+</ul>
+<p>Example with speed limit applied:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>build/pde_solver<span class="w"> </span><span class="m">200</span><span class="w"> </span><span class="m">800</span><span class="w"> </span><span class="m">1</span>.0<span class="w"> </span><span class="m">1</span>.0<span class="w"> </span><span class="m">0</span>.2<span class="w"> </span><span class="m">0</span>.2<span class="w"> </span>constant<span class="w"> </span>lf<span class="w"> </span>open<span class="w"> </span><span class="m">0</span>.6<span class="w">        </span><span class="se">\</span>
+<span class="w">    </span>data/output/multilane_limit.nc<span class="w"> </span><span class="m">2</span><span class="w"> </span><span class="m">0</span>.5<span class="w"> </span><span class="s2">&quot;1.0,1.5&quot;</span><span class="w"> </span><span class="s2">&quot;1.0,1.0&quot;</span>
+</pre></div>
+</div>
+</section>
+<section id="visualising-multilane-output">
+<h2>Visualising multilane output<a class="headerlink" href="#visualising-multilane-output" title="Link to this heading"></a></h2>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>python<span class="w"> </span>scripts/run_multilane_pde.py<span class="w"> </span>--save
+</pre></div>
+</div>
+<p>Omit <code class="docutils literal notranslate"><span class="pre">--scenario</span></code> to run all scenarios, or pass a letter prefix to run one.
+The space–time panel shows density in each lane as a function of time at the
+domain mid-point, making it straightforward to observe equilibration.</p>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="pde_model.html" class="btn btn-neutral float-left" title="PDE traffic-flow model" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="ca_model.html" class="btn btn-neutral float-right" title="Cellular automaton traffic models" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2026, Jasper Allen, Tristan McCarthy, Stephan Gambart, Lucas Belz-Koeling.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

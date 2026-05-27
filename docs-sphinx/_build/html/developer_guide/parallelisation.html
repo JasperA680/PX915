@@ -1,0 +1,272 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Parallelisation &mdash; PX915 Traffic Flow Modelling 0.1.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=9edc463e" />
+
+  
+      <script src="../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../_static/documentation_options.js?v=01f34227"></script>
+      <script src="../_static/doctools.js?v=9a2dae69"></script>
+      <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
+      <script async="async" src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <script src="../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="Defining a custom road network" href="custom_networks.html" />
+    <link rel="prev" title="Numerical methods" href="numerical_methods.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../index.html" class="icon icon-home">
+            PX915 Traffic Flow Modelling
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">User guide:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../user_guide/index.html">User guide</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Developer guide:</span></p>
+<ul class="current">
+<li class="toctree-l1 current"><a class="reference internal" href="index.html">Developer guide</a><ul class="current">
+<li class="toctree-l2"><a class="reference internal" href="numerical_methods.html">Numerical methods</a></li>
+<li class="toctree-l2 current"><a class="current reference internal" href="#">Parallelisation</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#motivation">Motivation</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#fundamental-diagram-sweep-implemented">Fundamental-diagram sweep (implemented)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#cellular-automaton-models">Cellular automaton models</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#pde-models">PDE models</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#multilane-pde-models">Multilane PDE models</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#performance-measurements">Performance measurements</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#validation-requirements">Validation requirements</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#summary">Summary</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="custom_networks.html">Defining a custom road network</a></li>
+<li class="toctree-l2"><a class="reference internal" href="extending.html">Extending the code</a></li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">API reference:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../api/index.html">API reference</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">PX915 Traffic Flow Modelling</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="index.html">Developer guide</a></li>
+      <li class="breadcrumb-item active">Parallelisation</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../_sources/developer_guide/parallelisation.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="parallelisation">
+<h1>Parallelisation<a class="headerlink" href="#parallelisation" title="Link to this heading"></a></h1>
+<p>This page outlines how parallelisation could be added to the traffic-flow
+simulation code as a future development. One subsystem — the
+fundamental-diagram sweep — has already been parallelised with OpenMP
+because it sits at the easy end of the spectrum (independent measurements
+with no shared state); the rest of the code is still serial.</p>
+<p>At present, the network simulator (<code class="docutils literal notranslate"><span class="pre">run_network</span></code>), the PDE solver, and
+the cellular automaton update rules themselves are written as serial
+implementations. This makes the update rules easier to validate and keeps
+the model behaviour transparent. Parallelisation of those components would
+be an additional performance feature rather than a core part of the
+current implementation.</p>
+<section id="motivation">
+<h2>Motivation<a class="headerlink" href="#motivation" title="Link to this heading"></a></h2>
+<p>The simulation cost increases with the number of cells, lanes, roads, time steps
+and parameter sweeps. Parallelisation could reduce runtime for larger studies,
+especially when running many independent simulations for fundamental diagrams,
+validation tests or uncertainty studies.</p>
+<p>The main aim of any future parallel implementation should be to improve runtime
+without changing the physical model or the numerical results.</p>
+</section>
+<section id="fundamental-diagram-sweep-implemented">
+<h2>Fundamental-diagram sweep (implemented)<a class="headerlink" href="#fundamental-diagram-sweep-implemented" title="Link to this heading"></a></h2>
+<p>The fundamental-diagram sweep driver (<code class="docutils literal notranslate"><span class="pre">build/fd_sweep</span></code>, source
+<code class="docutils literal notranslate"><span class="pre">src/fortran/fundamental_diagram.f90</span></code>) is parallelised with OpenMP. The
+sweep runs <code class="docutils literal notranslate"><span class="pre">n_points</span></code> (TASEP: <code class="docutils literal notranslate"><span class="pre">2</span> <span class="pre">*</span> <span class="pre">n_points</span></code>, alpha and beta branches)
+independent steady-state measurements, each of which builds its own
+single-lane <code class="docutils literal notranslate"><span class="pre">road_network_t</span></code> and calls <code class="docutils literal notranslate"><span class="pre">measure_steady_state_tasep</span></code> or
+<code class="docutils literal notranslate"><span class="pre">measure_steady_state_ns</span></code>. The measurement subroutines touch no global
+state — every allocation lives on the calling thread’s local
+<code class="docutils literal notranslate"><span class="pre">road_network_t</span></code> — so the outer <code class="docutils literal notranslate"><span class="pre">do</span> <span class="pre">i</span> <span class="pre">=</span> <span class="pre">1,</span> <span class="pre">n_points</span></code> loops parallelise
+directly with <code class="docutils literal notranslate"><span class="pre">!$omp</span> <span class="pre">parallel</span> <span class="pre">do</span></code>.</p>
+<p>The only subtlety is the random number generator. The Fortran intrinsic
+<code class="docutils literal notranslate"><span class="pre">random_number</span></code> has per-thread state under gfortran’s OpenMP runtime,
+so the calls themselves are thread-safe, but the <em>output</em> of a sweep
+depends on which RNG state each iteration sees. To make the result
+bit-identical across thread counts, the driver re-seeds the calling
+thread’s RNG state at the top of every iteration with a deterministic
+function of <code class="docutils literal notranslate"><span class="pre">(seed,</span> <span class="pre">i,</span> <span class="pre">branch)</span></code> (see
+<code class="docutils literal notranslate"><span class="pre">fundamental_diagram_mod::seed_iter_rng</span></code>). Each iteration then runs
+with its own private, reproducible random stream.</p>
+<p>The build is one flag: <code class="docutils literal notranslate"><span class="pre">-fopenmp</span></code> on the <code class="docutils literal notranslate"><span class="pre">fd_sweep</span></code> recipe in the
+top-level <code class="docutils literal notranslate"><span class="pre">Makefile</span></code>. On macOS the system clang doesn’t ship libomp,
+but this project’s gfortran (<code class="docutils literal notranslate"><span class="pre">hyperspy-bundle</span></code>, GCC 13.4) ships its own
+OpenMP runtime, so no extra setup is required.</p>
+<p>At the time of writing, on an 8-core M-series Mac, a single TASEP sweep
+at <code class="docutils literal notranslate"><span class="pre">L</span> <span class="pre">=</span> <span class="pre">300,</span> <span class="pre">n_points</span> <span class="pre">=</span> <span class="pre">20,</span> <span class="pre">n_steps</span> <span class="pre">=</span> <span class="pre">3000</span></code> runs in 1.79 s on one
+thread and 0.31 s on eight (5.8x speedup; the high-end superlinearity
+comes from better L1 / L2 fit per worker on small networks).</p>
+<p>The scaling and bit-identity properties are checked by
+<code class="docutils literal notranslate"><span class="pre">tests/test_fd_openmp_scaling.py</span></code>, which runs the sweep at
+<code class="docutils literal notranslate"><span class="pre">OMP_NUM_THREADS</span> <span class="pre">=</span> <span class="pre">1</span></code> and <code class="docutils literal notranslate"><span class="pre">OMP_NUM_THREADS</span> <span class="pre">=</span> <span class="pre">min(4,</span> <span class="pre">cpu_count)</span></code>,
+asserts byte-equal NetCDF outputs for both TASEP and NS, and requires a
+&gt;= 1.5x wall-clock speedup on the parallel run.</p>
+</section>
+<section id="cellular-automaton-models">
+<h2>Cellular automaton models<a class="headerlink" href="#cellular-automaton-models" title="Link to this heading"></a></h2>
+<p>The cellular automaton models update vehicles on a discrete lattice. The main
+challenge is that neighbouring cells are coupled: whether a vehicle can move
+depends on whether the next cell is empty.</p>
+<p>A future parallel implementation would need to preserve the existing
+parallel-update semantics. This means that all movement decisions should be made
+from an old-state snapshot, while accepted moves are written to a new state.</p>
+<p>For the one-dimensional TASEP model, possible parallelisation strategies include:</p>
+<ul class="simple">
+<li><p>splitting the lattice into chunks and handling chunk boundaries carefully;</p></li>
+<li><p>parallelising over independent simulation runs in a parameter sweep;</p></li>
+<li><p>parallelising over repeated stochastic realisations used for averaging.</p></li>
+</ul>
+<p>Parallelising over independent runs is likely to be the safest first step,
+because each simulation can be run without communication with the others.</p>
+</section>
+<section id="pde-models">
+<h2>PDE models<a class="headerlink" href="#pde-models" title="Link to this heading"></a></h2>
+<p>The PDE solver uses a finite-volume update. Each cell update depends mainly on
+local neighbouring fluxes, giving a stencil-like structure:</p>
+<div class="math notranslate nohighlight">
+\[\rho_i^{n+1}
+=
+\rho_i^n
+-
+\frac{\Delta t}{\Delta x}
+\left(
+F_{i+1/2} - F_{i-1/2}
+\right).\]</div>
+<p>This locality makes the PDE solver a natural candidate for shared-memory
+parallelisation, for example using OpenMP. A future implementation could compute
+fluxes or cell updates in parallel, provided that all reads are taken from a
+consistent old state.</p>
+</section>
+<section id="multilane-pde-models">
+<h2>Multilane PDE models<a class="headerlink" href="#multilane-pde-models" title="Link to this heading"></a></h2>
+<p>The multilane PDE model adds conservative lane-changing source terms. These
+source terms couple neighbouring lanes as well as neighbouring spatial cells.</p>
+<p>A future parallel implementation should probably split the update into separate
+stages:</p>
+<ol class="arabic simple">
+<li><p>compute flux updates from the old density field;</p></li>
+<li><p>compute lane-change source terms from the old density field;</p></li>
+<li><p>combine the flux and source updates into the new density field.</p></li>
+</ol>
+<p>This structure would help avoid race conditions and make mass-conservation checks
+easier.</p>
+</section>
+<section id="performance-measurements">
+<h2>Performance measurements<a class="headerlink" href="#performance-measurements" title="Link to this heading"></a></h2>
+<p>If parallelisation is added, performance should be measured using speedup:</p>
+<div class="math notranslate nohighlight">
+\[S_p = \frac{T_1}{T_p},\]</div>
+<p>where <code class="docutils literal notranslate"><span class="pre">T_1</span></code> is the serial runtime and <code class="docutils literal notranslate"><span class="pre">T_p</span></code> is the runtime using <code class="docutils literal notranslate"><span class="pre">p</span></code>
+parallel workers.</p>
+<p>An ideal implementation would give:</p>
+<div class="math notranslate nohighlight">
+\[S_p \approx p,\]</div>
+<p>but real performance will be limited by serial sections, memory bandwidth,
+communication overhead and load imbalance.</p>
+</section>
+<section id="validation-requirements">
+<h2>Validation requirements<a class="headerlink" href="#validation-requirements" title="Link to this heading"></a></h2>
+<p>Any future parallel version should be validated against the current serial code.
+Useful checks include:</p>
+<ul class="simple">
+<li><p>matching density and current statistics for the 1D TASEP model;</p></li>
+<li><p>reproducing the same fundamental diagrams;</p></li>
+<li><p>checking mass conservation in the PDE and multilane PDE solvers;</p></li>
+<li><p>verifying that multilane equilibrium tests still agree with the analytical
+prediction;</p></li>
+<li><p>confirming that differences in stochastic simulations are consistent with
+random variation rather than implementation error.</p></li>
+</ul>
+</section>
+<section id="summary">
+<h2>Summary<a class="headerlink" href="#summary" title="Link to this heading"></a></h2>
+<p>Parallelisation is a possible future extension of the codebase. The current
+serial implementation provides a correctness reference, and any future
+parallel implementation should be judged by both runtime improvement and
+agreement with the validated serial results.</p>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="numerical_methods.html" class="btn btn-neutral float-left" title="Numerical methods" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="custom_networks.html" class="btn btn-neutral float-right" title="Defining a custom road network" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2026, Jasper Allen, Tristan McCarthy, Stephan Gambart, Lucas Belz-Koeling.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

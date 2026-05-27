@@ -1,0 +1,228 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Quickstart &mdash; PX915 Traffic Flow Modelling 0.1.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=9edc463e" />
+
+  
+      <script src="../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../_static/documentation_options.js?v=01f34227"></script>
+      <script src="../_static/doctools.js?v=9a2dae69"></script>
+      <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="PDE traffic-flow model" href="pde_model.html" />
+    <link rel="prev" title="Installation" href="installation.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../index.html" class="icon icon-home">
+            PX915 Traffic Flow Modelling
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">User guide:</span></p>
+<ul class="current">
+<li class="toctree-l1 current"><a class="reference internal" href="index.html">User guide</a><ul class="current">
+<li class="toctree-l2"><a class="reference internal" href="installation.html">Installation</a></li>
+<li class="toctree-l2 current"><a class="current reference internal" href="#">Quickstart</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#running-a-1d-cellular-automaton-simulation">Running a 1D cellular automaton simulation</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#running-a-pde-simulation">Running a PDE simulation</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#running-the-python-gui">Running the Python GUI</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#where-to-go-next">Where to go next</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="pde_model.html">PDE traffic-flow model</a></li>
+<li class="toctree-l2"><a class="reference internal" href="multilane_pde.html">Multilane PDE model</a></li>
+<li class="toctree-l2"><a class="reference internal" href="ca_model.html">Cellular automaton traffic models</a></li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Developer guide:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../developer_guide/index.html">Developer guide</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">API reference:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../api/index.html">API reference</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">PX915 Traffic Flow Modelling</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="index.html">User guide</a></li>
+      <li class="breadcrumb-item active">Quickstart</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../_sources/user_guide/quickstart.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="quickstart">
+<h1>Quickstart<a class="headerlink" href="#quickstart" title="Link to this heading"></a></h1>
+<p>This page gives a brief introduction to running the traffic-flow simulation
+code for the first time.</p>
+<p>The project contains two main types of model:</p>
+<ul class="simple">
+<li><p>a one-dimensional cellular automaton model, including TASEP and
+Nagel-Schreckenberg style updates;</p></li>
+<li><p>a continuum PDE model, including single-lane and multilane LWR traffic-flow
+solvers.</p></li>
+</ul>
+<p>Before running anything, make sure you have followed the steps in
+<a class="reference internal" href="installation.html"><span class="doc">Installation</span></a> to clone the repo, install Python dependencies, and build
+the Fortran binaries.</p>
+<section id="running-a-1d-cellular-automaton-simulation">
+<h2>Running a 1D cellular automaton simulation<a class="headerlink" href="#running-a-1d-cellular-automaton-simulation" title="Link to this heading"></a></h2>
+<p>The one-dimensional cellular automaton model represents the road as a lattice of
+empty or occupied cells. The TASEP model uses open boundaries with an entry
+probability <code class="docutils literal notranslate"><span class="pre">alpha</span></code> and an exit probability <code class="docutils literal notranslate"><span class="pre">beta</span></code>.</p>
+<p>A typical workflow is:</p>
+<ol class="arabic simple">
+<li><p>choose the road length;</p></li>
+<li><p>choose the number of time steps;</p></li>
+<li><p>choose the boundary rates <code class="docutils literal notranslate"><span class="pre">alpha</span></code> and <code class="docutils literal notranslate"><span class="pre">beta</span></code>;</p></li>
+<li><p>run the simulation;</p></li>
+<li><p>analyse the density and current histories.</p></li>
+</ol>
+<p>The main Fortran routines for this model are documented in the
+<a class="reference internal" href="../api/fortran.html"><span class="doc">Fortran API</span></a> page under the cellular automata section.</p>
+</section>
+<section id="running-a-pde-simulation">
+<h2>Running a PDE simulation<a class="headerlink" href="#running-a-pde-simulation" title="Link to this heading"></a></h2>
+<p>The PDE model evolves the traffic density as a continuous field using a
+finite-volume method. The default closure is the Greenshields fundamental
+diagram.</p>
+<p>Typical quantities to set are:</p>
+<ul class="simple">
+<li><p>number of spatial cells;</p></li>
+<li><p>number of time steps;</p></li>
+<li><p>maximum velocity;</p></li>
+<li><p>maximum density;</p></li>
+<li><p>initial condition;</p></li>
+<li><p>boundary condition;</p></li>
+<li><p>numerical flux type.</p></li>
+</ul>
+<p>The PDE solver writes output that can be visualised using the Python plotting
+routines documented in the <a class="reference internal" href="../api/python.html"><span class="doc">Python API</span></a> page.</p>
+</section>
+<section id="running-the-python-gui">
+<h2>Running the Python GUI<a class="headerlink" href="#running-the-python-gui" title="Link to this heading"></a></h2>
+<p>A PyQt5 GUI bundles both models behind a single window so simulations can be
+configured, run, and inspected interactively. The Fortran binaries (<code class="docutils literal notranslate"><span class="pre">make</span></code>)
+must already be built — the GUI launches them as subprocesses.</p>
+<p>From the project root, with the virtual environment active, run:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>python<span class="w"> </span>scripts/run_gui.py
+</pre></div>
+</div>
+<p>The window has two top-level tabs:</p>
+<ul class="simple">
+<li><p><strong>Cellular Automaton (CA)</strong> — choose a network preset
+(<code class="docutils literal notranslate"><span class="pre">single_lane</span></code>, <code class="docutils literal notranslate"><span class="pre">two_lane</span></code>, <code class="docutils literal notranslate"><span class="pre">t_junction</span></code>, <code class="docutils literal notranslate"><span class="pre">crossroads</span></code>, <code class="docutils literal notranslate"><span class="pre">roundabout</span></code>,
+<code class="docutils literal notranslate"><span class="pre">town</span></code>) and a model (<code class="docutils literal notranslate"><span class="pre">NS</span></code> or <code class="docutils literal notranslate"><span class="pre">TASEP</span></code>); the network preview shows the
+layout, and clicking a road opens an editor for its α, β and length, while
+clicking a junction opens its routing matrix. Use the matplotlib toolbar
+above the preview to pan and zoom, or pick a road from the <strong>Focus on</strong>
+dropdown to jump-zoom to it — α/β/length labels only appear once you zoom
+in close enough to read them. A separate <strong>Run FD sweep</strong> button populates
+the fundamental-diagram tab from a parameter sweep; this is only meaningful
+for the <code class="docutils literal notranslate"><span class="pre">single_lane</span></code> preset, and the button is greyed out elsewhere.</p></li>
+<li><p><strong>PDE Continuum Model</strong> — pick a single-lane Riemann preset
+(shock, rarefaction, …) or one of the multilane scenarios, or edit any
+parameter by hand; the form syncs <code class="docutils literal notranslate"><span class="pre">n_steps</span></code> and total time <code class="docutils literal notranslate"><span class="pre">T</span></code> via the
+CFL estimate.</p></li>
+</ul>
+<p>Each tab has its own plot panel that refreshes after every run, with
+several complementary views of the result; tabs that don’t apply to the
+current run (per-lane plots, mass-conservation diagnostics, the
+fundamental-diagram view) stay disabled until the relevant data is
+available.  A corner indicator marks results as <em>up to date</em>, <em>stale</em>,
+<em>running…</em>, or empty; editing any parameter after a run flags the
+displayed plots as stale until the next <strong>Run</strong>.</p>
+<p>Every parameter input — spin boxes, sliders, and dropdowns alike — carries
+an explanatory tooltip. Hover the cursor over any control to see what it
+does and any caveats (for example, that <code class="docutils literal notranslate"><span class="pre">v_limit</span></code> should be set equal to
+<code class="docutils literal notranslate"><span class="pre">v_max</span></code> for the unrestricted Greenshields flux).</p>
+<p>Output NetCDF files are written under <code class="docutils literal notranslate"><span class="pre">data/output/gui/</span></code> (CA) and
+<code class="docutils literal notranslate"><span class="pre">data/output/gui_pde/</span></code> (PDE); the bottom-of-window log dock streams the
+solver’s progress and prints per-road steady-state diagnostics on completion.</p>
+</section>
+<section id="where-to-go-next">
+<h2>Where to go next<a class="headerlink" href="#where-to-go-next" title="Link to this heading"></a></h2>
+<p>For a user-facing explanation of the continuum traffic model, see
+<a class="reference internal" href="pde_model.html"><span class="doc">PDE traffic-flow model</span></a>.</p>
+<p>For the multilane extension, see <a class="reference internal" href="multilane_pde.html"><span class="doc">Multilane PDE model</span></a>.</p>
+<p>For the cellular automaton models (TASEP, Nagel–Schreckenberg, lane changing,
+and road networks), see <a class="reference internal" href="ca_model.html"><span class="doc">Cellular automaton traffic models</span></a>.</p>
+<p>For implementation details, see <a class="reference internal" href="../developer_guide/numerical_methods.html"><span class="doc">Numerical methods</span></a>.</p>
+<p>For automatically generated API documentation, see <a class="reference internal" href="../api/index.html"><span class="doc">API reference</span></a>.</p>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="installation.html" class="btn btn-neutral float-left" title="Installation" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="pde_model.html" class="btn btn-neutral float-right" title="PDE traffic-flow model" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2026, Jasper Allen, Tristan McCarthy, Stephan Gambart, Lucas Belz-Koeling.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

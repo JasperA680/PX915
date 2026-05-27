@@ -1,0 +1,289 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Extending the code &mdash; PX915 Traffic Flow Modelling 0.1.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=9edc463e" />
+
+  
+      <script src="../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../_static/documentation_options.js?v=01f34227"></script>
+      <script src="../_static/doctools.js?v=9a2dae69"></script>
+      <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="API reference" href="../api/index.html" />
+    <link rel="prev" title="Defining a custom road network" href="custom_networks.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../index.html" class="icon icon-home">
+            PX915 Traffic Flow Modelling
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">User guide:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../user_guide/index.html">User guide</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Developer guide:</span></p>
+<ul class="current">
+<li class="toctree-l1 current"><a class="reference internal" href="index.html">Developer guide</a><ul class="current">
+<li class="toctree-l2"><a class="reference internal" href="numerical_methods.html">Numerical methods</a></li>
+<li class="toctree-l2"><a class="reference internal" href="parallelisation.html">Parallelisation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="custom_networks.html">Defining a custom road network</a></li>
+<li class="toctree-l2 current"><a class="current reference internal" href="#">Extending the code</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#adding-a-new-pde-flux-scheme-or-closure">Adding a new PDE flux scheme or closure</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#adding-a-new-initial-condition">Adding a new initial condition</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#adding-a-new-network-preset">Adding a new network preset</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#code-style-conventions">Code style conventions</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">API reference:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../api/index.html">API reference</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">PX915 Traffic Flow Modelling</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="index.html">Developer guide</a></li>
+      <li class="breadcrumb-item active">Extending the code</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../_sources/developer_guide/extending.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="extending-the-code">
+<h1>Extending the code<a class="headerlink" href="#extending-the-code" title="Link to this heading"></a></h1>
+<p>This page describes how to add new functionality to the three main extension
+points in the codebase: PDE flux schemes / closures, PDE initial conditions,
+and network presets.  Each section lists the files to edit, the convention to
+follow, and a minimal worked example.</p>
+<section id="adding-a-new-pde-flux-scheme-or-closure">
+<h2>Adding a new PDE flux scheme or closure<a class="headerlink" href="#adding-a-new-pde-flux-scheme-or-closure" title="Link to this heading"></a></h2>
+<p>The PDE solver dispatches on the string <code class="docutils literal notranslate"><span class="pre">flux_type</span></code> at two levels:</p>
+<ol class="arabic simple">
+<li><p><strong>Fortran</strong> — the closure functions and Godunov solver in
+<code class="docutils literal notranslate"><span class="pre">src/fortran/pde_flux.f90</span></code>.</p></li>
+<li><p><strong>Python runner</strong> — the argument is passed through unchanged by
+<code class="docutils literal notranslate"><span class="pre">src/python/pde_runner.py</span></code>; no Python changes are needed for the solver
+itself.</p></li>
+</ol>
+<p><strong>Step 1 — implement the flux function in</strong> <code class="docutils literal notranslate"><span class="pre">src/fortran/pde_flux.f90</span></code></p>
+<p>Add a pure function that computes <code class="docutils literal notranslate"><span class="pre">q(rho)</span></code> for the new closure, following
+the pattern of the existing <code class="docutils literal notranslate"><span class="pre">q_greenshields</span></code> and <code class="docutils literal notranslate"><span class="pre">q_newell</span></code> functions:</p>
+<div class="highlight-fortran notranslate"><div class="highlight"><pre><span></span><span class="k">pure function </span><span class="n">q_myflux</span><span class="p">(</span><span class="n">rho</span><span class="p">,</span><span class="w"> </span><span class="n">v_max</span><span class="p">,</span><span class="w"> </span><span class="n">rho_max</span><span class="p">)</span><span class="w"> </span><span class="k">result</span><span class="p">(</span><span class="n">q</span><span class="p">)</span>
+<span class="w">  </span><span class="kt">real</span><span class="p">(</span><span class="n">dp</span><span class="p">),</span><span class="w"> </span><span class="k">intent</span><span class="p">(</span><span class="n">in</span><span class="p">)</span><span class="w"> </span><span class="kd">::</span><span class="w"> </span><span class="n">rho</span><span class="p">,</span><span class="w"> </span><span class="n">v_max</span><span class="p">,</span><span class="w"> </span><span class="n">rho_max</span>
+<span class="w">  </span><span class="kt">real</span><span class="p">(</span><span class="n">dp</span><span class="p">)</span><span class="w"> </span><span class="kd">::</span><span class="w"> </span><span class="n">q</span>
+<span class="w">  </span><span class="c">! ... your closure here ...</span>
+<span class="k">end function </span><span class="n">q_myflux</span>
+</pre></div>
+</div>
+<p>Add an equivalent <code class="docutils literal notranslate"><span class="pre">dq_drho_myflux</span></code> function for the characteristic speed
+(needed by the CFL condition).</p>
+<p><strong>Step 2 — register the new name in the dispatch functions</strong></p>
+<p>In <code class="docutils literal notranslate"><span class="pre">pde_flux.f90</span></code>, the functions <code class="docutils literal notranslate"><span class="pre">q_dispatch</span></code>, <code class="docutils literal notranslate"><span class="pre">dq_drho_dispatch</span></code>, and
+<code class="docutils literal notranslate"><span class="pre">godunov_dispatch</span></code> each contain a string-comparison block (lines ~343–400).
+Add a new branch:</p>
+<div class="highlight-fortran notranslate"><div class="highlight"><pre><span></span><span class="c">! inside q_dispatch</span>
+<span class="k">else if</span><span class="w"> </span><span class="p">(</span><span class="nb">index</span><span class="p">(</span><span class="nb">trim</span><span class="p">(</span><span class="n">flux_type</span><span class="p">),</span><span class="w"> </span><span class="s1">&#39;myflux&#39;</span><span class="p">)</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="mi">0</span><span class="p">)</span><span class="w"> </span><span class="k">then</span>
+<span class="k">  </span><span class="n">q</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">q_myflux</span><span class="p">(</span><span class="n">rho</span><span class="p">,</span><span class="w"> </span><span class="n">v_max</span><span class="p">,</span><span class="w"> </span><span class="n">rho_max</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>Repeat the pattern for <code class="docutils literal notranslate"><span class="pre">dq_drho_dispatch</span></code> and, if you want Godunov support,
+for <code class="docutils literal notranslate"><span class="pre">godunov_dispatch</span></code>.</p>
+<p><strong>Step 3 — expose it in the Python runner</strong></p>
+<p><code class="docutils literal notranslate"><span class="pre">src/python/pde_runner.py</span></code> contains a helper <code class="docutils literal notranslate"><span class="pre">q_of_rho(rho,</span> <span class="pre">params)</span></code> used
+by the visualisation and analysis layers.  Add a branch to its dispatch block
+so that <code class="docutils literal notranslate"><span class="pre">plot_pde_fundamental_diagram</span></code> and the speed-limit comparison can
+overlay the analytical curve:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="c1"># inside q_of_rho in pde_runner.py</span>
+<span class="k">elif</span> <span class="n">params</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;flux_type&#39;</span><span class="p">,</span> <span class="s1">&#39;&#39;</span><span class="p">)</span> <span class="o">==</span> <span class="s1">&#39;myflux&#39;</span><span class="p">:</span>
+    <span class="k">return</span> <span class="n">q_myflux_python</span><span class="p">(</span><span class="n">rho</span><span class="p">,</span> <span class="n">v_max</span><span class="p">,</span> <span class="n">rho_max</span><span class="p">)</span>
+</pre></div>
+</div>
+<p><strong>Step 4 — rebuild</strong></p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>make
+</pre></div>
+</div>
+</section>
+<section id="adding-a-new-initial-condition">
+<h2>Adding a new initial condition<a class="headerlink" href="#adding-a-new-initial-condition" title="Link to this heading"></a></h2>
+<p>Initial conditions are applied in <code class="docutils literal notranslate"><span class="pre">src/fortran/pde_module.f90</span></code> inside the
+<code class="docutils literal notranslate"><span class="pre">initialise_pde</span></code> subroutine (around line 154).  The <code class="docutils literal notranslate"><span class="pre">select</span> <span class="pre">case</span></code> block
+dispatches on <code class="docutils literal notranslate"><span class="pre">params%ic_type</span></code>.</p>
+<p><strong>Step 1 — add a new</strong> <code class="docutils literal notranslate"><span class="pre">case</span></code> <strong>branch</strong>:</p>
+<div class="highlight-fortran notranslate"><div class="highlight"><pre><span></span><span class="k">case</span><span class="w"> </span><span class="p">(</span><span class="s1">&#39;myic&#39;</span><span class="p">)</span>
+<span class="w">  </span><span class="c">! fill rho(1:M) with the desired profile</span>
+<span class="w">  </span><span class="k">do </span><span class="n">i</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="n">params</span><span class="p">%</span><span class="n">M</span>
+<span class="w">    </span><span class="n">rho</span><span class="p">(</span><span class="n">i</span><span class="p">)</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">...</span>
+<span class="w">  </span><span class="k">end do</span>
+</pre></div>
+</div>
+<p>The array <code class="docutils literal notranslate"><span class="pre">rho</span></code> has already been allocated to size <code class="docutils literal notranslate"><span class="pre">params%M</span></code> when this
+block is reached.  Use <code class="docutils literal notranslate"><span class="pre">params%rho_left_bc</span></code>, <code class="docutils literal notranslate"><span class="pre">params%rho_right_bc</span></code>,
+<code class="docutils literal notranslate"><span class="pre">params%v_max</span></code>, and <code class="docutils literal notranslate"><span class="pre">params%rho_max</span></code> as needed.</p>
+<p><strong>Step 2 — document the new string</strong> in <code class="docutils literal notranslate"><span class="pre">docs-sphinx/user_guide/pde_model.rst</span></code>
+under the <em>Initial conditions</em> section, following the style of the existing
+entries.</p>
+<p><strong>Step 3 — rebuild</strong> with <code class="docutils literal notranslate"><span class="pre">make</span></code>.</p>
+</section>
+<section id="adding-a-new-network-preset">
+<h2>Adding a new network preset<a class="headerlink" href="#adding-a-new-network-preset" title="Link to this heading"></a></h2>
+<p>Network presets are Python functions in <code class="docutils literal notranslate"><span class="pre">src/python/road_network.py</span></code>.  Each
+preset returns a <code class="docutils literal notranslate"><span class="pre">(NetworkSpec,</span> <span class="pre">LayoutSpec)</span></code> tuple and is registered in the
+<code class="docutils literal notranslate"><span class="pre">PRESETS</span></code> dict at the bottom of the file so the GUI and runner can find it by
+name.</p>
+<p>For the data model and wiring rules a preset builder needs to satisfy
+(lane flow direction, junction legs, routing matrices, perimeter ports),
+see <a class="reference internal" href="custom_networks.html"><span class="doc">Defining a custom road network</span></a>. Promoting a one-off custom topology to a
+preset is mostly a matter of wrapping it in a function and registering
+it in <code class="docutils literal notranslate"><span class="pre">PRESETS</span></code>.</p>
+<p><strong>Step 1 — write the preset function</strong></p>
+<p>Follow the signature and return types of an existing preset such as
+<code class="docutils literal notranslate"><span class="pre">t_junction</span></code> (line ~266):</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="k">def</span><span class="w"> </span><span class="nf">my_network</span><span class="p">(</span>
+    <span class="n">L</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">20</span><span class="p">,</span> <span class="n">alpha</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">0.4</span><span class="p">,</span> <span class="n">beta</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">0.5</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="n">NetworkSpec</span><span class="p">,</span> <span class="n">LayoutSpec</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;One-line description.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    L : int</span>
+<span class="sd">        Road segment length (cells).</span>
+<span class="sd">    alpha, beta : float</span>
+<span class="sd">        Default entry/exit probabilities for open ends.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    NetworkSpec, LayoutSpec</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># Build roads, junctions, and routing matrices.</span>
+    <span class="c1"># Call validate(spec) before returning.</span>
+    <span class="o">...</span>
+    <span class="n">validate</span><span class="p">(</span><span class="n">spec</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">spec</span><span class="p">,</span> <span class="n">layout</span>
+</pre></div>
+</div>
+<p>Key rules:</p>
+<ul class="simple">
+<li><p>Every road end that connects to a junction must appear in that junction’s
+routing matrix.</p></li>
+<li><p>Every open road end (no junction) must have <code class="docutils literal notranslate"><span class="pre">alpha</span></code> / <code class="docutils literal notranslate"><span class="pre">beta</span></code> set on the
+relevant lane.</p></li>
+<li><p>Call <code class="docutils literal notranslate"><span class="pre">validate(spec)</span></code> — it checks routing matrix rows sum to 1 and that
+lane indices are consistent.</p></li>
+</ul>
+<p><strong>Step 2 — register in</strong> <code class="docutils literal notranslate"><span class="pre">PRESETS</span></code>:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">PRESETS</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="o">...</span>
+    <span class="s2">&quot;my_network&quot;</span><span class="p">:</span> <span class="n">my_network</span><span class="p">,</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+<p>The key is the string the GUI and <code class="docutils literal notranslate"><span class="pre">run_simulation</span></code> use to look up the preset.</p>
+<p><strong>Step 3 — add a layout entry</strong> to the GUI’s network widget if you want it to
+appear in the preset dropdown; the widget reads from <code class="docutils literal notranslate"><span class="pre">PRESETS</span></code> automatically,
+so no extra GUI code is needed.</p>
+<p><strong>Step 4 — verify</strong> by running the GUI or calling the preset directly:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">python.road_network</span><span class="w"> </span><span class="kn">import</span> <span class="n">my_network</span>
+<span class="n">spec</span><span class="p">,</span> <span class="n">layout</span> <span class="o">=</span> <span class="n">my_network</span><span class="p">()</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">spec</span><span class="o">.</span><span class="n">roads</span><span class="p">)</span><span class="si">}</span><span class="s2"> roads, </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">spec</span><span class="o">.</span><span class="n">junctions</span><span class="p">)</span><span class="si">}</span><span class="s2"> junctions&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+</section>
+<section id="code-style-conventions">
+<h2>Code style conventions<a class="headerlink" href="#code-style-conventions" title="Link to this heading"></a></h2>
+<p><strong>Fortran</strong></p>
+<ul class="simple">
+<li><p>Use <code class="docutils literal notranslate"><span class="pre">implicit</span> <span class="pre">none</span></code> in every module and subroutine.</p></li>
+<li><p>Declare all variables with explicit kinds; use the <code class="docutils literal notranslate"><span class="pre">dp</span></code> parameter
+(<code class="docutils literal notranslate"><span class="pre">real64</span></code>) defined in <code class="docutils literal notranslate"><span class="pre">pde_module.f90</span></code> for floating-point quantities.</p></li>
+<li><p>Pure functions should be marked <code class="docutils literal notranslate"><span class="pre">pure</span></code>; elemental functions <code class="docutils literal notranslate"><span class="pre">elemental</span></code>.</p></li>
+<li><p>Write docstring-style comments above each subroutine/function using the
+<code class="docutils literal notranslate"><span class="pre">!&gt;</span></code> prefix so that <code class="docutils literal notranslate"><span class="pre">sphinx-fortran</span></code> picks them up automatically.</p></li>
+</ul>
+<p><strong>Python</strong></p>
+<ul class="simple">
+<li><p>Follow NumPy docstring style (Parameters / Returns sections) — the Sphinx
+build uses the Napoleon extension to render these.</p></li>
+<li><p>Keep plotting functions in <code class="docutils literal notranslate"><span class="pre">src/python/pde_visualisation.py</span></code> or
+<code class="docutils literal notranslate"><span class="pre">src/python/CA_visualisation.py</span></code> as appropriate; keep data-generation
+and analysis logic in <code class="docutils literal notranslate"><span class="pre">src/python/analysis.py</span></code> or <code class="docutils literal notranslate"><span class="pre">src/python/pde_runner.py</span></code>.</p></li>
+<li><p>New scripts that wrap the Fortran binaries go in <code class="docutils literal notranslate"><span class="pre">scripts/</span></code>; new Python
+modules that provide reusable functionality go in <code class="docutils literal notranslate"><span class="pre">src/python/</span></code>.</p></li>
+</ul>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="custom_networks.html" class="btn btn-neutral float-left" title="Defining a custom road network" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="../api/index.html" class="btn btn-neutral float-right" title="API reference" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2026, Jasper Allen, Tristan McCarthy, Stephan Gambart, Lucas Belz-Koeling.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>
