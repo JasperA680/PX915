@@ -34,6 +34,7 @@ module network_init_mod
     private
 
     public :: init_crossroad, init_t_junction, free_network, init_lane
+    public :: place_evenly
 
 contains
 
@@ -296,6 +297,54 @@ contains
         ln%old%has_car    = .false.
         ln%old%velocity   = 0
     end subroutine init_lane
+
+
+    subroutine place_evenly(ln, n_vehicles)
+        ! Pre-populate a lane with ``n_vehicles`` cars at evenly-spaced sites
+        ! and zero velocity.
+        !
+        ! Even spacing gives a deterministic starting density and avoids the
+        ! initial transient that follows random or clumped placements. The
+        ! placement is:
+        !
+        ! .. math::
+        !
+        !    i_k = 1 + \left\lfloor \frac{(k - 1)\, L}{n} \right\rfloor,
+        !    \quad k = 1, \dots, n,
+        !
+        ! where ``L`` is the lane length and ``n`` is the (clamped) vehicle
+        ! count. ``n_vehicles`` is clipped to ``[0, length]`` before placement,
+        ! so passing 0 (or a negative value) is a no-op and passing more
+        ! vehicles than cells fills the lane completely. Existing lane state is
+        ! overwritten — any previous occupancy is cleared first.
+        !
+        ! Single source of truth used both by the periodic-ring
+        ! fundamental-diagram measurement (``fundamental_diagram_mod``) and by
+        ! the network builder when a lane specifies a non-zero ``n_vehicles``
+        ! (typically a periodic NS ring set up via ``single_lane_periodic`` on
+        ! the Python side).
+        type(lane_t), intent(inout) :: ln
+        ! Lane to populate. Must have its ``cells`` array already allocated
+        ! (e.g. by ``init_lane``).
+        integer, intent(in) :: n_vehicles
+        ! Target number of vehicles, clipped to ``[0, ln%length]``.
+
+        integer :: n, k, idx, L
+
+        L = ln%length
+        ln%cells%has_car  = .false.
+        ln%cells%velocity = 0
+
+        n = max(0, min(n_vehicles, L))
+        if (n == 0) return
+
+        do k = 1, n
+            idx = 1 + ((k - 1) * L) / n
+            if (idx > L) idx = L
+            ln%cells(idx)%has_car  = .true.
+            ln%cells(idx)%velocity = 0
+        end do
+    end subroutine place_evenly
 
 
     subroutine free_network(net)

@@ -123,10 +123,26 @@ Network I/O module
 
 The ``network_io_mod`` module writes the full network simulation output to a
 NetCDF file. The output includes per-step occupancy and velocity histories,
-per-lane and per-road metadata, flattened junction tables, and global
-simulation attributes.
+per-lane and per-road metadata (including the ``lane_is_periodic`` flag for
+closed-ring lanes), flattened junction tables, and global simulation
+attributes.
 
 .. f:autosrcfile:: network_io.f90
+
+
+NetCDF config reader module
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The ``nc_config_mod`` module is the Fortran counterpart of the Python
+``write_config_netcdf`` function: it reads a ``config.nc`` file authored by
+the Python frontend and reconstructs a ``sim_params_t`` plus a
+``network_spec_t`` that the network builder can turn into a runtime
+``road_network_t``. Optional lane fields added since the original schema
+(``lane_is_periodic``, ``lane_n_vehicles``) are read via dedicated optional
+helpers that fall back to safe defaults when the variable is absent, so old
+NetCDF configs keep loading without change.
+
+.. f:autosrcfile:: nc_config.f90
 
 
 Network driver program

@@ -53,6 +53,7 @@ fortran_src = [
     "../src/fortran/network_init.f90",
     "../src/fortran/network_simulation.f90",
     "../src/fortran/network_io.f90",
+    "../src/fortran/nc_config.f90",
     "../src/fortran/run_network.f90",
     "../src/fortran/fundamental_diagram.f90",
 ]

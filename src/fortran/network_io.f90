@@ -49,7 +49,9 @@ contains
         !
         ! * cell-level occupancy and velocity histories;
         ! * final occupancy and velocity arrays;
-        ! * lane lookup tables mapping flattened lane indices to roads and lanes;
+        ! * lane lookup tables mapping flattened lane indices to roads and lanes
+        !   (including the ``lane_is_periodic`` flag so closed-ring NS lanes can
+        !   be identified after the fact);
         ! * road-level density, entry and exit histories;
         ! * flattened junction connectivity and route-probability tables;
         ! * global metadata describing the simulation.
@@ -132,6 +134,10 @@ contains
         ! NetCDF variable identifier for lane open-in flags.
         integer :: var_l_oout
         ! NetCDF variable identifier for lane open-out flags.
+        integer :: var_l_period
+        ! NetCDF variable identifier for lane is_periodic flags. (The
+        ! companion ``lane_n_vehicles`` is an input-time field consumed by
+        ! ``place_evenly`` at build time; it lives only in the config NetCDF.)
         integer :: var_r_endj
         ! NetCDF variable identifier for road endpoint junctions.
         integer :: var_r_dens
@@ -200,6 +206,8 @@ contains
         ! Open-inflow flag for each flattened lane.
         integer(kind=1), allocatable :: lane_oout(:)
         ! Open-outflow flag for each flattened lane.
+        integer(kind=1), allocatable :: lane_period(:)
+        ! Periodic-boundary flag for each flattened lane.
         integer, allocatable :: road_endj(:,:)
         ! Endpoint junction identifiers for each road, shape ``(2, n_roads)``.
 
@@ -252,6 +260,7 @@ contains
         allocate(lane_road_id(n_lanes), lane_within(n_lanes), lane_len(n_lanes), lane_fd(n_lanes))
         allocate(lane_alpha(n_lanes), lane_beta(n_lanes))
         allocate(lane_oin(n_lanes), lane_oout(n_lanes))
+        allocate(lane_period(n_lanes))
 
         idx = 0
         do r = 1, n_roads
@@ -266,6 +275,7 @@ contains
                 lane_beta(idx)    = net%roads(r)%lane(k)%beta
                 lane_oin(idx)     = merge(1_1, 0_1, net%roads(r)%lane(k)%open_in)
                 lane_oout(idx)    = merge(1_1, 0_1, net%roads(r)%lane(k)%open_out)
+                lane_period(idx)  = merge(1_1, 0_1, net%roads(r)%lane(k)%is_periodic)
             end do
         end do
 
@@ -379,6 +389,7 @@ contains
         call check( nf90_def_var(ncid, 'lane_beta',           NF90_FLOAT, [dim_lane], var_l_beta) )
         call check( nf90_def_var(ncid, 'lane_open_in',        NF90_BYTE,  [dim_lane], var_l_oin) )
         call check( nf90_def_var(ncid, 'lane_open_out',       NF90_BYTE,  [dim_lane], var_l_oout) )
+        call check( nf90_def_var(ncid, 'lane_is_periodic',    NF90_BYTE,  [dim_lane], var_l_period) )
 
         ! Define per-road variables.
         call check( nf90_def_var(ncid, 'road_end_junction', NF90_INT,   [dim_pair, dim_road], var_r_endj) )
@@ -417,6 +428,7 @@ contains
         call check( nf90_put_var(ncid, var_l_beta,   lane_beta) )
         call check( nf90_put_var(ncid, var_l_oin,    lane_oin) )
         call check( nf90_put_var(ncid, var_l_oout,   lane_oout) )
+        call check( nf90_put_var(ncid, var_l_period, lane_period) )
 
         ! Write per-road diagnostics.
         call check( nf90_put_var(ncid, var_r_endj, road_endj) )

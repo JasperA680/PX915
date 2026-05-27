@@ -33,7 +33,7 @@ module fundamental_diagram_mod
 
     use netcdf
     use road_network_mod
-    use network_init_mod, only: init_lane, free_network
+    use network_init_mod, only: init_lane, free_network, place_evenly
     use tasep_model,      only: tasep_lane_step
     use NS_model,         only: NS_model_step
     use network_io_mod,   only: check
@@ -230,31 +230,6 @@ contains
         net%roads(1)%lane(1)%is_periodic = is_periodic
     end subroutine build_chain_network
 
-
-    subroutine place_evenly(ln, n_vehicles)
-        ! Place ``n_vehicles`` cars on a lane at evenly-spaced sites with zero
-        ! velocity.  Even spacing gives a deterministic starting density and
-        ! avoids initial transients caused by lumped random placements.
-        ! ``n_vehicles`` is clamped to ``[0, length]``.
-        type(lane_t), intent(inout) :: ln
-        integer, intent(in) :: n_vehicles
-
-        integer :: n, k, idx, L
-
-        L = ln%length
-        ln%cells%has_car  = .false.
-        ln%cells%velocity = 0
-
-        n = max(0, min(n_vehicles, L))
-        if (n == 0) return
-
-        do k = 1, n
-            idx = 1 + ((k - 1) * L) / n
-            if (idx > L) idx = L
-            ln%cells(idx)%has_car  = .true.
-            ln%cells(idx)%velocity = 0
-        end do
-    end subroutine place_evenly
 
 end module fundamental_diagram_mod
 

@@ -27,8 +27,9 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_BINARY = REPO_ROOT / "build" / "run_network"
 DEFAULT_OUTDIR = REPO_ROOT / "data" / "output" / "gui"
 
-# Available CA update rules.  Only "NS" is implemented physics-side; "TASEP"
-# is plumbed through the JSON config but the Fortran driver errors out on it.
+# Available CA update rules. Both run end-to-end through the Fortran network
+# simulator: NS via NS_model_step (open boundary or periodic via the
+# is_periodic flag), TASEP via tasep_lane_step.
 CA_MODELS = ("NS", "TASEP")
 
 # Presets where TASEP physics is appropriate.  TASEP is a 1D single-chain

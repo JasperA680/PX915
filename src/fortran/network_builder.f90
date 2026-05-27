@@ -1,8 +1,9 @@
 module network_builder_mod
     ! Build a road-network object from a flat network specification.
     !
-    ! This module defines lightweight specification types that mirror the JSON
-    ! configuration schema used by the road-network model. The main routine,
+    ! This module defines lightweight specification types that mirror the
+    ! NetCDF configuration schema (read by ``nc_config_mod`` from the
+    ! ``config.nc`` file the Python frontend writes). The main routine,
     ! ``build_network``, converts a ``network_spec_t`` into a fully allocated
     ! ``road_network_t`` that can be advanced by the network time-step routines.
     !
@@ -29,7 +30,7 @@ module network_builder_mod
     ! code.
 
     use road_network_mod
-    use network_init_mod, only: init_lane
+    use network_init_mod, only: init_lane, place_evenly
 
     implicit none
     private
@@ -37,8 +38,11 @@ module network_builder_mod
     type :: lane_spec_t
         ! Specification for a single lane in a road.
         !
-        ! This type stores the lane length, flow direction and open-boundary
-        ! parameters read from the network configuration.
+        ! This type stores the lane length, flow direction, open-boundary
+        ! parameters, optional periodic-boundary flag and an optional initial
+        ! vehicle count to pre-place on the lane. Mirrors ``LaneSpec`` on the
+        ! Python side and is serialised through the NetCDF config schema (see
+        ! ``nc_config_mod::read_config`` and ``python.io.write_config_netcdf``).
 
         integer :: length = 0
         ! Number of cells in the lane.
@@ -52,6 +56,17 @@ module network_builder_mod
         ! Whether the lane has an open inflow boundary.
         logical :: open_out = .false.
         ! Whether the lane has an open outflow boundary.
+        logical :: is_periodic = .false.
+        ! Whether the lane wraps as a closed ring (site 1 follows site
+        ! ``length``). Mutually exclusive with open boundaries: when set, the
+        ! NS step uses its periodic branch and ignores ``open_in`` / ``open_out``.
+        ! Default ``.false.`` so existing specs and old NetCDF configs (which
+        ! don't carry this field) keep their open-boundary behaviour.
+        integer :: n_vehicles = 0
+        ! Optional initial vehicle count placed evenly on the lane by
+        ! ``build_network``. Zero (the default) leaves the lane empty at
+        ! step 0. Primarily used for periodic NS rings so the simulation
+        ! starts at the requested global density; harmless on open lanes.
     end type lane_spec_t
 
 
@@ -156,7 +171,10 @@ contains
         !
         ! * copies the road identifier and endpoint junctions;
         ! * allocates the lane array;
-        ! * initialises each lane and copies its boundary parameters.
+        ! * initialises each lane and copies its boundary parameters
+        !   (``alpha``, ``beta``, ``open_in``, ``open_out``, ``is_periodic``);
+        ! * if the lane spec requests ``n_vehicles > 0``, pre-populates the
+        !   lane via ``place_evenly`` (typically used for periodic NS rings).
         !
         ! For each junction, the builder:
         !
@@ -194,10 +212,19 @@ contains
                                spec%roads(r)%lanes(l)%length, &
                                spec%roads(r)%lanes(l)%flow_direction)
 
-                net%roads(r)%lane(l)%alpha    = spec%roads(r)%lanes(l)%alpha
-                net%roads(r)%lane(l)%beta     = spec%roads(r)%lanes(l)%beta
-                net%roads(r)%lane(l)%open_in  = spec%roads(r)%lanes(l)%open_in
-                net%roads(r)%lane(l)%open_out = spec%roads(r)%lanes(l)%open_out
+                net%roads(r)%lane(l)%alpha       = spec%roads(r)%lanes(l)%alpha
+                net%roads(r)%lane(l)%beta        = spec%roads(r)%lanes(l)%beta
+                net%roads(r)%lane(l)%open_in     = spec%roads(r)%lanes(l)%open_in
+                net%roads(r)%lane(l)%open_out    = spec%roads(r)%lanes(l)%open_out
+                net%roads(r)%lane(l)%is_periodic = spec%roads(r)%lanes(l)%is_periodic
+
+                ! Seed the lane with evenly-spaced vehicles if requested. Zero
+                ! (the default) leaves the lane empty so this is a no-op for
+                ! all existing specs.
+                if (spec%roads(r)%lanes(l)%n_vehicles > 0) then
+                    call place_evenly(net%roads(r)%lane(l), &
+                                      spec%roads(r)%lanes(l)%n_vehicles)
+                end if
             end do
         end do
 

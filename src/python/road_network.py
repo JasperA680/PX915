@@ -1,19 +1,28 @@
 """Python-side network spec and preset builders.
 
-This module mirrors the Fortran derived types (lane_spec_t, road_spec_t,
-junc_spec_t, network_spec_t) so a network can be authored in Python,
-validated, serialised to the JSON config schema, and shipped off to the
-Fortran driver `./build/run_network`.
+This module mirrors the Fortran derived types (``lane_spec_t``,
+``road_spec_t``, ``junc_spec_t``, ``network_spec_t``) so a network can be
+authored in Python, validated, serialised to the NetCDF config schema
+(``python.io.write_config_netcdf``), and shipped off to the Fortran driver
+``./build/run_network``.
 
-Four presets are exposed:
-    single_lane(...)   - one-road 1D TASEP baseline
-    crossroads(...)    - 4-way junction, mirrors init_crossroad
-    roundabout(...)    - 4 T-junctions in a clockwise ring
-    town(...)          - 2x2 grid of crossroads + 8 external arms
+Seven presets are exposed:
 
-Each preset returns (NetworkSpec, LayoutSpec).  The layout is ignored by
-Fortran but stored verbatim in the NC `config_json` attribute so the GUI
-can re-render the diagram on load.
+* ``single_lane(L, alpha, beta)`` — one-road one-lane open-boundary 1D
+  TASEP / NS baseline.
+* ``single_lane_periodic(L, n_vehicles)`` — closed-ring NS lane with a
+  fixed initial vehicle count placed evenly; matches the periodic-ring
+  geometry the fundamental-diagram NS sweep uses internally.
+* ``two_lane(L, alpha, beta)`` — two same-direction lanes on one road
+  (lane-changing baseline).
+* ``t_junction(...)`` — three-arm T-junction.
+* ``crossroads(...)`` — four-way junction, mirrors ``init_crossroad``.
+* ``roundabout(...)`` — four T-junctions arranged in a clockwise ring.
+* ``town(...)`` — 2×2 grid of crossroads with eight external arms.
+
+Each preset returns ``(NetworkSpec, LayoutSpec)``. The layout is ignored
+by Fortran but stored verbatim in the config NetCDF so the GUI can
+re-render the diagram on load.
 """
 
 from __future__ import annotations
@@ -28,12 +37,34 @@ from typing import Dict, List, Tuple
 
 @dataclass
 class LaneSpec:
+    """One lane in a road. Mirrors the Fortran ``lane_spec_t``.
+
+    Length, flow direction and the open-boundary rates (``alpha`` /
+    ``beta``) cover all the geometry the original schema needed. Two
+    additional fields support closed-ring NS simulations:
+
+    - ``is_periodic``: when ``True`` the lane wraps as a closed ring
+      (site 1 follows site ``length``) — site indexing in the Fortran NS
+      step then uses ``mod L`` and the ``open_in`` / ``open_out`` /
+      ``alpha`` / ``beta`` fields are ignored. Mutually exclusive with
+      open boundaries in practice; the run-time NS step branches on this
+      flag (``NS_model_step`` in ``NS_model.f90``).
+    - ``n_vehicles``: optional initial vehicle count. When > 0, the
+      Fortran builder calls ``network_init_mod::place_evenly`` to seed
+      that many cars at evenly-spaced sites on this lane before step 1.
+      Used for periodic NS rings so the simulation starts at the
+      requested global density; harmless on open lanes (just gives a
+      non-empty initial state).
+    """
+
     length: int
     flow_direction: int       # +1 (end_1 -> end_2) or -1
     alpha: float = 0.0
     beta: float = 0.0
     open_in: bool = False
     open_out: bool = False
+    is_periodic: bool = False
+    n_vehicles: int = 0
 
 
 @dataclass
@@ -172,6 +203,38 @@ def single_lane(L: int = 50, alpha: float = 0.5, beta: float = 0.5) -> Tuple[Net
     road = RoadSpec(
         id=1, end_junction=(0, 0),
         lanes=[LaneSpec(L, +1, alpha=alpha, beta=beta, open_in=True, open_out=True)],
+    )
+    spec = NetworkSpec(roads=[road], junctions=[])
+    layout = LayoutSpec(road_endpoints={1: ((0.0, 0.0), (1.0, 0.0))})
+    return spec, layout
+
+
+def single_lane_periodic(L: int = 200, n_vehicles: int = 40) -> Tuple[NetworkSpec, LayoutSpec]:
+    """One road, one lane, **periodic** boundaries — closed NS ring.
+
+    The lane wraps as a closed ring of length ``L`` with ``n_vehicles`` cars
+    placed evenly at step 0 (so the global density is exactly ``n_vehicles / L``
+    and stays constant for the whole run — no entry / exit).  Use with
+    ``model='NS'`` in ``SimParams`` to drive the same closed-ring NS dynamics
+    the fundamental-diagram sweep uses internally; the resulting NetCDF carries
+    a full ``(time, cell)`` occupancy history so you can plot phantom-jam
+    space-time diagrams.
+
+    The ``alpha`` / ``beta`` / ``open_in`` / ``open_out`` fields are forced
+    off because the periodic branch of the NS step ignores them; setting them
+    here would just be misleading metadata.
+
+    Returns the standard ``(NetworkSpec, LayoutSpec)`` pair. The layout draws
+    the road as a horizontal segment; the GUI's network preview doesn't
+    distinguish periodic from open lanes visually.
+
+    ``v_max`` and ``p_slow`` are taken from ``SimParams`` at run time and do
+    not need to be specified at spec time, matching every other preset.
+    """
+    road = RoadSpec(
+        id=1, end_junction=(0, 0),
+        lanes=[LaneSpec(L, +1, alpha=0.0, beta=0.0, open_in=False, open_out=False,
+                        is_periodic=True, n_vehicles=int(n_vehicles))],
     )
     spec = NetworkSpec(roads=[road], junctions=[])
     layout = LayoutSpec(road_endpoints={1: ((0.0, 0.0), (1.0, 0.0))})

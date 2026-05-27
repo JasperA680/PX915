@@ -30,9 +30,11 @@ JUNCTION_SRC     = $(SRC_DIR)/junction.f90
 LANE_CHANGE_SRC  = $(SRC_DIR)/lane_change.f90
 NET_SIM_SRC      = $(SRC_DIR)/network_simulation.f90
 
-# Network builder + JSON config + NetCDF writer + driver (Python frontend integration)
+# Network builder + NetCDF config reader + NetCDF result writer + driver
+# (Python frontend writes config.nc via python.io.write_config_netcdf;
+# Fortran reads it via nc_config_mod::read_config.)
 NETWORK_BUILDER_SRC = $(SRC_DIR)/network_builder.f90
-JSON_CONFIG_SRC     = $(SRC_DIR)/json_config.f90
+NC_CONFIG_SRC       = $(SRC_DIR)/nc_config.f90
 NETWORK_IO_SRC      = $(SRC_DIR)/network_io.f90
 RUN_NETWORK_SRC     = $(SRC_DIR)/run_network.f90
 
@@ -172,10 +174,10 @@ $(TEST_NS_PERIODIC_EXE): $(VEHICLE_SRC) $(NETWORK_SRC) tests/test_ns_periodic.f9
 run_test_ns_periodic: test_ns_periodic
 	./$(TEST_NS_PERIODIC_EXE)
 
-# Python-frontend driver: reads JSON config, runs sim, writes NetCDF.
+# Python-frontend driver: reads NetCDF config, runs sim, writes NetCDF.
 run_network: $(RUN_NETWORK_EXE)
 
-$(RUN_NETWORK_EXE): $(NETWORK_LIB_SRC) $(NETWORK_BUILDER_SRC) $(JSON_CONFIG_SRC) $(NETWORK_IO_SRC) $(RUN_NETWORK_SRC)
+$(RUN_NETWORK_EXE): $(NETWORK_LIB_SRC) $(NETWORK_BUILDER_SRC) $(NC_CONFIG_SRC) $(NETWORK_IO_SRC) $(RUN_NETWORK_SRC)
 	mkdir -p $(BUILD_DIR)
 	$(FC) $(FFLAGS) -J$(BUILD_DIR) $^ -o $@ $(NC_FLIBS)
 

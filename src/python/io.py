@@ -1,3 +1,26 @@
+"""NetCDF I/O for the Python frontend.
+
+Three jobs:
+
+1. ``write_config_netcdf`` — serialises a ``NetworkSpec`` + ``SimParams`` +
+   ``LayoutSpec`` to a config NetCDF the Fortran driver
+   (``./build/run_network``) reads via ``nc_config_mod::read_config``.
+2. ``load_network_netcdf`` — loads a completed run's output NetCDF (written
+   by ``network_io_mod::write_network_netcdf``) into a ``NetworkResult``
+   dataclass.  When a sibling ``config.nc`` is present in the same
+   directory, the layout coords are also reconstructed (the run NetCDF
+   itself doesn't carry them).
+3. ``load_network_for_restart`` — a thinner reader for the subset of
+   fields a future restart workflow would need (final occupancy / velocity
+   / RNG seed).
+
+The on-disk schema is shared with the Fortran writer / reader by variable
+name; adding a new per-lane field means adding it to all three of
+``LaneSpec``, ``write_config_netcdf``, and ``nc_config_mod`` together
+(typically with an optional fallback on the reader so older NetCDFs keep
+loading — see ``lane_is_periodic`` / ``lane_n_vehicles`` for the pattern).
+"""
+
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, Optional
@@ -48,6 +71,10 @@ class NetworkResult:
     lane_beta:          np.ndarray
     lane_open_in:       np.ndarray
     lane_open_out:      np.ndarray
+    lane_is_periodic:   np.ndarray   # int8; 1 = periodic ring, 0 = open. Missing
+                                     # from NetCDFs written before periodic-NS
+                                     # was wired through the Python pipeline; the
+                                     # loader falls back to zeros for those.
 
     # Per-road
     road_end_junction:  np.ndarray   # (road, 2)
@@ -95,6 +122,14 @@ def load_network_netcdf(filename) -> NetworkResult:
         def arr(name):
             return np.array(v[name][:])
 
+        def arr_opt(name, fill_shape):
+            """Read an optional variable; return zeros of the given shape if absent."""
+            if name in v:
+                return np.array(v[name][:])
+            return np.zeros(fill_shape, dtype=np.int8)
+
+        n_lanes_out = int(v['lane_road_id'].shape[0])
+
         result = NetworkResult(
             occupancy=arr('occupancy'),
             velocity=arr('velocity'),
@@ -108,6 +143,7 @@ def load_network_netcdf(filename) -> NetworkResult:
             lane_beta=arr('lane_beta'),
             lane_open_in=arr('lane_open_in'),
             lane_open_out=arr('lane_open_out'),
+            lane_is_periodic=arr_opt('lane_is_periodic', (n_lanes_out,)),
             road_end_junction=arr('road_end_junction'),
             road_density=arr('road_density'),
             road_entries=arr('road_entries'),
@@ -189,6 +225,24 @@ def write_config_netcdf(spec, params, layout, path) -> Path:
 
     Variable names match the schema used by ``network_io_mod`` in the Fortran
     output writer — so Fortran can read with identical naming.
+
+    Per-lane variables written:
+
+    - ``lane_road_id``, ``lane_within_road``, ``lane_length``,
+      ``lane_flow_direction`` — geometry / indexing.
+    - ``lane_alpha``, ``lane_beta``, ``lane_open_in``, ``lane_open_out`` —
+      open-boundary entry / exit rates and flags.
+    - ``lane_is_periodic`` — closed-ring flag; the Fortran NS step's periodic
+      branch consumes this. Defaults to 0 (False) if the ``LaneSpec`` doesn't
+      set it.
+    - ``lane_n_vehicles`` — optional initial vehicle count; ``build_network``
+      seeds that many cars evenly (via ``network_init_mod::place_evenly``)
+      before step 1. Defaults to 0 (empty initial state) on open lanes.
+
+    ``lane_is_periodic`` and ``lane_n_vehicles`` are read by
+    ``nc_config_mod::read_config`` via optional helpers that fall back to
+    ``.false.`` / 0 when the variable is absent, so older configs without
+    these fields keep loading without error.
     """
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -201,6 +255,7 @@ def write_config_netcdf(spec, params, layout, path) -> Path:
 
     lane_road_id, lane_within, lane_len, lane_fd = [], [], [], []
     lane_alpha, lane_beta, lane_open_in, lane_open_out = [], [], [], []
+    lane_is_periodic, lane_n_vehicles = [], []
     for r in spec.roads:
         for k, ln in enumerate(r.lanes, start=1):
             lane_road_id.append(r.id)
@@ -211,6 +266,10 @@ def write_config_netcdf(spec, params, layout, path) -> Path:
             lane_beta.append(float(ln.beta))
             lane_open_in.append(1 if ln.open_in else 0)
             lane_open_out.append(1 if ln.open_out else 0)
+            # New optional lane fields; default to off / empty so older specs
+            # that don't set them write the same content they always did.
+            lane_is_periodic.append(1 if getattr(ln, "is_periodic", False) else 0)
+            lane_n_vehicles.append(int(getattr(ln, "n_vehicles", 0)))
     n_lanes = len(lane_len)
 
     j_nin, j_nout = [], []
@@ -292,6 +351,12 @@ def write_config_netcdf(spec, params, layout, path) -> Path:
         _write('lane_beta',            ('lane_index',), lane_beta,    np.float32)
         _write('lane_open_in',         ('lane_index',), lane_open_in, np.int8)
         _write('lane_open_out',        ('lane_index',), lane_open_out, np.int8)
+        # Optional periodic-NS / pre-placement fields. The Fortran reader
+        # (nc_config_mod::read_byte_1d_opt / read_int_1d_opt) treats both as
+        # optional and falls back to .false. / 0 when absent, so a Python
+        # frontend that doesn't write them stays forward-compatible.
+        _write('lane_is_periodic',     ('lane_index',), lane_is_periodic, np.int8)
+        _write('lane_n_vehicles',      ('lane_index',), lane_n_vehicles,  np.int32)
 
         # Per-junction.  Even when n_juncs == 0 we still create dimensioned
         # vars of size 1 (with a sentinel) so the Fortran reader's

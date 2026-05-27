@@ -8,10 +8,12 @@ The ``road_network`` module defines the data structures and preset builders used
 to describe a road network before a simulation run.  It provides dataclasses for
 lanes, roads, junctions, and layouts (``LaneSpec``, ``RoadSpec``,
 ``JunctionSpec``, ``LayoutSpec``, ``NetworkSpec``, ``SimParams``), a
-``validate`` function that checks the spec for consistency, and six preset
-factory functions — ``single_lane``, ``two_lane``, ``t_junction``,
-``crossroads``, ``roundabout``, and ``town`` — that return ready-to-use
-``(NetworkSpec, LayoutSpec)`` pairs.
+``validate`` function that checks the spec for consistency, and seven preset
+factory functions — ``single_lane``, ``single_lane_periodic`` (closed NS
+ring), ``two_lane``, ``t_junction``, ``crossroads``, ``roundabout``, and
+``town`` — that return ready-to-use ``(NetworkSpec, LayoutSpec)`` pairs.
+The ``LaneSpec`` dataclass also carries the optional ``is_periodic`` flag
+and ``n_vehicles`` initial-count field consumed by the Fortran builder.
 
 .. automodule:: road_network
    :members:
