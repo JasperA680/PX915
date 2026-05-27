@@ -45,8 +45,8 @@ def plot_density(data, ax=None, title=None):
         fig = ax.figure
 
     ax.plot(steps, density, color='steelblue', linewidth=1.2)
-    # Theoretical steady-state density for min-current phase: 0.5 when alpha=beta=0.5
-    rho_mean = float(np.mean(density))
+
+    rho_mean = float(np.mean(density[int(-1*n_steps/2):]))              # Steady state mean from second half of data
     ax.axhline(rho_mean, color='tomato', linestyle='--', linewidth=1,
                label=f'time-mean ρ = {rho_mean:.3f}')
     ax.set_xlabel('Time step')
@@ -69,7 +69,7 @@ def plot_current(data, ax=None, title=None):
         fig = ax.figure
 
     ax.bar(steps, current, color='steelblue', width=0.8)
-    j_mean = float(np.mean(current))
+    j_mean = float(np.mean(current[int(-1*n_steps/2):]))                # Steady state mean from second half of data
     ax.axhline(j_mean, color='tomato', linestyle='--', linewidth=1,
                label=f'mean J = {j_mean:.3f}')
     ax.set_xlabel('Time step')
@@ -475,7 +475,7 @@ def plot_network_layout(result, ax=None, occupancy_t=None,
         title_t = "—"
     elif isinstance(occupancy_t, tuple):
         a, b = sorted((int(occupancy_t[0]), int(occupancy_t[1])))
-        title_t = f"{a + 1}" if a == b else f"{a + 1}–{b + 1} (mean)"
+        title_t = f"{a + 1}" if a == b else f"{a + 1}–>{b + 1} (mean)"
     else:
         title_t = f"{int(occupancy_t) + 1}"
 
