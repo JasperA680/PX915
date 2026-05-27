@@ -62,6 +62,10 @@ fortran_src = [
 napoleon_google_docstring = False
 napoleon_numpy_docstring = True
 
+# -- Options for LaTeX / PDF output ------------------------------------------
+
+latex_engine = 'xelatex'
+
 # -- Options for HTML output -------------------------------------------------
 
 html_theme = 'sphinx_rtd_theme'

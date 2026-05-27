@@ -23,6 +23,9 @@ data/output/heatmap_smoke/
 # Generated plots
 plots/
 
+# PDF build outputs
+*.pdf
+
 # Claude Progress
 PROGRESS.md
 
